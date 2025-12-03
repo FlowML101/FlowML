@@ -6,78 +6,10 @@ export default function WorkerLogs() {
   const [logLevel, setLogLevel] = useState('all');
 
   const workers = [
-    { id: 'worker-node-01', name: 'Worker Node 01', status: 'active', jobs: 3 },
-    { id: 'worker-node-02', name: 'Worker Node 02', status: 'active', jobs: 2 },
-    { id: 'worker-node-03', name: 'Worker Node 03', status: 'idle', jobs: 0 },
-    { id: 'worker-node-04', name: 'Worker Node 04', status: 'active', jobs: 1 }
+    { id: 'worker-node-01', name: 'Worker Node 01', status: 'idle', jobs: 0 },
   ];
 
-  const logs = [
-    {
-      timestamp: '2025-12-03 14:23:45',
-      level: 'info',
-      worker: 'worker-node-01',
-      job: 'job_abc123',
-      message: 'Started training job for Customer Churn Prediction',
-      details: 'Dataset: churn_data.csv (12,450 rows)'
-    },
-    {
-      timestamp: '2025-12-03 14:24:12',
-      level: 'info',
-      worker: 'worker-node-01',
-      job: 'job_abc123',
-      message: 'Feature engineering completed',
-      details: 'Generated 47 features from 12 original columns'
-    },
-    {
-      timestamp: '2025-12-03 14:25:33',
-      level: 'success',
-      worker: 'worker-node-01',
-      job: 'job_abc123',
-      message: 'Model training epoch 10/100 completed',
-      details: 'Accuracy: 82.4% | Loss: 0.3124 | Time: 45s'
-    },
-    {
-      timestamp: '2025-12-03 14:18:22',
-      level: 'warning',
-      worker: 'worker-node-01',
-      job: 'job_def456',
-      message: 'High memory usage detected',
-      details: 'RAM: 14.2GB / 16GB (88.75%) - Consider reducing batch size'
-    },
-    {
-      timestamp: '2025-12-03 14:15:08',
-      level: 'info',
-      worker: 'worker-node-01',
-      job: 'job_ghi789',
-      message: 'Hyperparameter tuning initiated',
-      details: 'Testing 48 parameter combinations using Optuna'
-    },
-    {
-      timestamp: '2025-12-03 14:10:45',
-      level: 'error',
-      worker: 'worker-node-01',
-      job: 'job_jkl012',
-      message: 'Dataset validation failed',
-      details: 'Missing values detected in 3 columns: age, income, tenure'
-    },
-    {
-      timestamp: '2025-12-03 14:05:33',
-      level: 'success',
-      worker: 'worker-node-01',
-      job: 'job_mno345',
-      message: 'Model training completed successfully',
-      details: 'Final accuracy: 94.2% | Total time: 2h 15m | Saved to storage'
-    },
-    {
-      timestamp: '2025-12-03 14:02:18',
-      level: 'info',
-      worker: 'worker-node-01',
-      job: null,
-      message: 'Worker heartbeat sent to orchestrator',
-      details: 'Status: Active | CPU: 45% | RAM: 8.2GB | GPU: 67%'
-    }
-  ];
+  const logs: any[] = [];
 
   const filteredLogs = logs.filter(log => {
     if (selectedWorker !== 'all' && log.worker !== selectedWorker) return false;
@@ -140,9 +72,10 @@ export default function WorkerLogs() {
         </Card>
       </div>
 
-      <Card variant="neutral" style={{ marginBottom: '32px' }}>
-        <div className="card-header">
-          <h3>Filter Options</h3>
+      <div style={{ marginBottom: '32px' }}>
+        <Card variant="neutral">
+          <div className="card-header">
+            <h3>Filter Options</h3>
           <button className="btn primary" style={{ padding: '8px 16px', fontSize: '12px' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -212,7 +145,13 @@ export default function WorkerLogs() {
           </span>
         </div>
         <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-          {filteredLogs.map((log, index) => (
+          {filteredLogs.length === 0 ? (
+            <div style={{ padding: '80px 40px', textAlign: 'center', opacity: 0.5 }}>
+              <div style={{ fontSize: 64, marginBottom: 16 }}>📋</div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>No logs found</div>
+              <div style={{ fontSize: 13, marginTop: 8 }}>Logs will appear here when workers start processing jobs</div>
+            </div>
+          ) : filteredLogs.map((log, index) => (
             <div
               key={index}
               style={{
@@ -260,9 +199,11 @@ export default function WorkerLogs() {
                 </div>
               </div>
             </div>
-          ))}
+          ))
+        }
         </div>
       </Card>
+      </div>
     </div>
   );
 }

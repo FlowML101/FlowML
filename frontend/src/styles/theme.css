@@ -141,3 +141,96 @@ label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 8px
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 10px; }
 
+/* Smooth Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Page transition animation */
+.page-content {
+  animation: fadeIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Card animations */
+.card {
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: scaleIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--elev-2), inset 0 1px 0 rgba(255,255,255,.1);
+}
+
+/* Grid item stagger animation */
+.grid > * {
+  animation: fadeIn 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+.grid > *:nth-child(1) { animation-delay: 0.05s; }
+.grid > *:nth-child(2) { animation-delay: 0.1s; }
+.grid > *:nth-child(3) { animation-delay: 0.15s; }
+.grid > *:nth-child(4) { animation-delay: 0.2s; }
+.grid > *:nth-child(5) { animation-delay: 0.25s; }
+.grid > *:nth-child(6) { animation-delay: 0.3s; }
+.grid > *:nth-child(7) { animation-delay: 0.35s; }
+.grid > *:nth-child(8) { animation-delay: 0.4s; }
+
+/* Sidebar link animation */
+.sidebar nav a {
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.sidebar nav a:hover {
+  transform: translateX(4px);
+}
+
+/* Button animations */
+.btn {
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Progress bar animation */
+@keyframes progressFill {
+  from { width: 0; }
+}
+
+/* Pulse animation for live indicators */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Smooth transitions for all interactive elements */
+a, button, input, select, textarea {
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Table row animation */
+.table tbody tr {
+  transition: background-color 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Metric number count animation */
+.metric-large {
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
