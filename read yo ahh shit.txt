@@ -1,0 +1,8 @@
+FlowML Studio
+
+Component	Technology			Reasons
+Frontend	Reflex (formerly Pynecone)	Pure Python, but creates a high-performance React frontend. Scalable & beautiful.
+Backend		FastAPI				Built-into Reflex. Handles the heavy lifting.
+ML Engine	FLAML				Microsoft's lightweight engine. Perfect for your 3050 (4GB VRAM).
+Queue		Redis				Mandatory. Prevents the app from crashing if 2 users click "Train" at once.
+Database	SQLite				Simple, single-file database. Easy to backup.
