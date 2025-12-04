@@ -2,7 +2,15 @@ import { Card } from '../components/ui/Card'
 
 export default function Copilot() {
   return (
-    <div className="grid">
+    <div className="page-content">
+      <div className="page-header" style={{ marginBottom: '32px' }}>
+        <div>
+          <h1>Copilot</h1>
+          <p className="page-subtitle">AI-powered data preprocessing assistant</p>
+        </div>
+      </div>
+
+      <div className="grid">
         <div className="span-12">
           <Card title="Copilot" actions={<button className="btn primary">Generate</button>} variant="blue" decoration>
             <div className="grid">
@@ -22,6 +30,7 @@ export default function Copilot() {
             </div>
           </Card>
         </div>
+      </div>
     </div>
   )
 }

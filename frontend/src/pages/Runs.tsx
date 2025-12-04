@@ -2,7 +2,15 @@ import { Card } from '../components/ui/Card'
 
 export default function Runs() {
   return (
-    <div className="grid">
+    <div className="page-content">
+      <div className="page-header" style={{ marginBottom: '32px' }}>
+        <div>
+          <h1>Runs</h1>
+          <p className="page-subtitle">View training runs and artifacts</p>
+        </div>
+      </div>
+
+      <div className="grid">
         <div className="span-12">
           <Card title="Runs & Artifacts" actions={<button className="btn">Refresh</button>} variant="purple" decoration>
             <table className="table">
@@ -15,6 +23,7 @@ export default function Runs() {
             </table>
           </Card>
         </div>
+      </div>
     </div>
   )
 }

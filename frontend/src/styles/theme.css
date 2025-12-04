@@ -85,7 +85,7 @@ body { font-family: var(--font-sans); background: var(--bg-gradient); color: var
 .btn.primary:hover { background: linear-gradient(135deg, #4c6ef5 0%, #3b5bdb 100%); box-shadow: 0 4px 12px rgba(92,124,250,.35); }
 
 .main { padding: 24px; overflow: auto; }
-.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 20px; }
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 24px; }
 .span-3 { grid-column: span 3; }
 .span-4 { grid-column: span 4; }
 .span-6 { grid-column: span 6; }
@@ -160,6 +160,23 @@ label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 8px
 /* Page transition animation */
 .page-content {
   animation: fadeIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.page-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  color: var(--text);
+}
+
+.page-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+  opacity: 0.8;
 }
 
 /* Card animations */

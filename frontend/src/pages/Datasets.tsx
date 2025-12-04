@@ -2,7 +2,15 @@ import { Card } from '../components/ui/Card'
 
 export default function Datasets() {
   return (
-    <div className="grid">
+    <div className="page-content">
+      <div className="page-header" style={{ marginBottom: '32px' }}>
+        <div>
+          <h1>Datasets</h1>
+          <p className="page-subtitle">Manage and upload training datasets</p>
+        </div>
+      </div>
+
+      <div className="grid">
         <div className="span-12">
           <Card title="Upload Dataset" actions={<button className="btn primary">Upload</button>} variant="teal" decoration>
             <form className="grid">
@@ -32,6 +40,7 @@ export default function Datasets() {
             </table>
           </Card>
         </div>
+      </div>
     </div>
   )
 }

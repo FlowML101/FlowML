@@ -2,7 +2,15 @@ import { Card } from '../components/ui/Card'
 
 export default function Jobs() {
   return (
-    <div className="grid">
+    <div className="page-content">
+      <div className="page-header" style={{ marginBottom: '32px' }}>
+        <div>
+          <h1>Jobs</h1>
+          <p className="page-subtitle">Create and manage training jobs</p>
+        </div>
+      </div>
+
+      <div className="grid">
         <div className="span-12">
           <Card title="New Job" actions={<button className="btn primary">Start</button>} variant="purple" decoration>
             <form className="grid">
@@ -45,6 +53,7 @@ export default function Jobs() {
             </table>
           </Card>
         </div>
+      </div>
     </div>
   )
 }

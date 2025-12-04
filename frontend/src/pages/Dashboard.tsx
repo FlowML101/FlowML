@@ -16,9 +16,16 @@ export default function Dashboard() {
   const upcomingTasks: any[] = []
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+    <div className="page-content">
+      <div className="page-header" style={{ marginBottom: '32px' }}>
+        <div>
+          <h1>Dashboard</h1>
+          <p className="page-subtitle">Overview of your ML training pipeline</p>
+        </div>
+      </div>
+
       {/* Stats Grid */}
-      <div className="grid" style={{ gap: 20 }}>
+      <div className="grid" style={{ gap: 24, marginBottom: 32 }}>
         {stats.map((stat, i) => (
           <div key={i} className="span-3">
             <Card variant={stat.variant} decoration decorationSize="small">
@@ -38,7 +45,7 @@ export default function Dashboard() {
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid" style={{ gap: 20 }}>
+      <div className="grid" style={{ gap: 24, marginBottom: 32 }}>
         {/* Recent Activity - 2/3 width */}
         <div className="span-8">
           <Card 
@@ -190,7 +197,7 @@ export default function Dashboard() {
       </div>
 
       {/* Bottom Grid */}
-      <div className="grid" style={{ gap: 20 }}>
+      <div className="grid" style={{ gap: 24, marginBottom: 32 }}>
         {/* Active Workers - Full Width */}
         <div className="span-12">
           <Card 

@@ -2,7 +2,15 @@ import { Card } from '../components/ui/Card'
 
 export default function Settings() {
   return (
-    <div className="grid">
+    <div className="page-content">
+      <div className="page-header" style={{ marginBottom: '32px' }}>
+        <div>
+          <h1>Settings</h1>
+          <p className="page-subtitle">Configure system and integration settings</p>
+        </div>
+      </div>
+
+      <div className="grid">
         <div className="span-12">
           <Card title="Settings" actions={<button className="btn primary">Save</button>} variant="neutral">
             <form className="grid">
@@ -31,6 +39,7 @@ export default function Settings() {
             <p style={{ fontSize: 14, lineHeight: 1.7, color: 'rgba(255,255,255,.7)', margin: 0 }}>Final Year Project | Team FlowML101</p>
           </Card>
         </div>
+      </div>
     </div>
   )
 }
