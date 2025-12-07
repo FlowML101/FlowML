@@ -63,8 +63,7 @@ export function CTA() {
             viewport={{ once: true }}
             className="text-lg md:text-xl text-zinc-400 mb-10 max-w-2xl mx-auto"
           >
-            Join thousands of privacy-conscious data scientists training models without cloud lock-in.
-            Start in under 60 seconds.
+            Be a privacy-conscious individual training models without cloud lock-in.
           </motion.p>
 
           {/* Buttons */}

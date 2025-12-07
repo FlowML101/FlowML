@@ -6,6 +6,7 @@ import {
   Activity, 
   Server, 
   Trophy,
+  FlaskConical,
   ScrollText,
   ChevronRight,
   Bell,
@@ -24,6 +25,7 @@ const navigation = [
   { name: 'Live Monitor', href: '/app/running', icon: Activity },
   { name: 'Workers', href: '/app/workers', icon: Server },
   { name: 'Results', href: '/app/results', icon: Trophy },
+  { name: 'Model Lab', href: '/app/inference', icon: FlaskConical },
   { name: 'Logs', href: '/app/logs', icon: ScrollText },
 ]
 

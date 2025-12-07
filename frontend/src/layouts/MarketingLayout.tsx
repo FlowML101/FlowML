@@ -72,11 +72,9 @@ export function MarketingLayout() {
             </div>
 
             <div>
-              <h3 className="font-semibold mb-4">Company</h3>
+              <h3 className="font-semibold mb-4">Creators</h3>
               <ul className="space-y-2 text-sm text-zinc-400">
-                <li><a href="#" className="hover:text-purple-400 transition-colors">About</a></li>
-                <li><a href="#" className="hover:text-purple-400 transition-colors">Blog</a></li>
-                <li><a href="#" className="hover:text-purple-400 transition-colors">Careers</a></li>
+                <li><a href="#" className="hover:text-purple-400 transition-colors">About Us</a></li>
               </ul>
             </div>
 

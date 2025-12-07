@@ -1,40 +1,22 @@
-import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Trophy, Download, Play, TrendingUp, Radio, Copy } from 'lucide-react'
+import { Trophy, Download, Radio, Copy, FlaskConical } from 'lucide-react'
 import { toast } from 'sonner'
 
 const mockModels = [
-  { rank: 1, name: 'CatBoost', accuracy: 0.983, f1: 0.981, precision: 0.985, recall: 0.978, time: '2m 15s' },
-  { rank: 2, name: 'XGBoost', accuracy: 0.978, f1: 0.976, precision: 0.980, recall: 0.972, time: '1m 52s' },
-  { rank: 3, name: 'LightGBM', accuracy: 0.975, f1: 0.973, precision: 0.977, recall: 0.969, time: '1m 38s' },
-  { rank: 4, name: 'Random Forest', accuracy: 0.968, f1: 0.965, precision: 0.971, recall: 0.960, time: '3m 05s' },
-  { rank: 5, name: 'Extra Trees', accuracy: 0.962, f1: 0.959, precision: 0.964, recall: 0.954, time: '2m 42s' },
+  { rank: 1, id: 'catboost-v1', name: 'CatBoost', accuracy: 0.983, f1: 0.981, precision: 0.985, recall: 0.978, time: '2m 15s' },
+  { rank: 2, id: 'xgboost-v1', name: 'XGBoost', accuracy: 0.978, f1: 0.976, precision: 0.980, recall: 0.972, time: '1m 52s' },
+  { rank: 3, id: 'lightgbm-v2', name: 'LightGBM', accuracy: 0.975, f1: 0.973, precision: 0.977, recall: 0.969, time: '1m 38s' },
+  { rank: 4, id: 'rf-v1', name: 'Random Forest', accuracy: 0.968, f1: 0.965, precision: 0.971, recall: 0.960, time: '3m 05s' },
+  { rank: 5, id: 'et-v1', name: 'Extra Trees', accuracy: 0.962, f1: 0.959, precision: 0.964, recall: 0.954, time: '2m 42s' },
 ]
 
 export function Results() {
-  const [inferenceData, setInferenceData] = useState({
-    pclass: '1',
-    sex: 'female',
-    age: '29',
-    sibsp: '0',
-    parch: '0',
-    fare: '75.00',
-  })
-  const [prediction, setPrediction] = useState<{ survived: boolean; confidence: number } | null>(null)
-
-  const handlePredict = () => {
-    // Mock prediction
-    setPrediction({
-      survived: true,
-      confidence: 0.87,
-    })
-  }
+  const navigate = useNavigate()
 
   return (
     <div className="space-y-6">
@@ -42,36 +24,38 @@ export function Results() {
       <div>
         <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
           <Trophy className="w-8 h-8 text-yellow-500" />
-          Results & Inference
+          Model Results
         </h1>
-        <p className="text-zinc-400">Model leaderboard and prediction interface</p>
+        <p className="text-zinc-400">Training leaderboard and model comparison</p>
       </div>
 
-      <Tabs defaultValue="leaderboard" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
-          <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
-          <TabsTrigger value="inference">Inference Lab</TabsTrigger>
-        </TabsList>
-
-        {/* Leaderboard Tab */}
-        <TabsContent value="leaderboard" className="space-y-6 mt-6">
-          {/* Best Model Card */}
-          <Card className="border-yellow-600/50 bg-yellow-600/5">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Trophy className="w-5 h-5 text-yellow-500" />
-                    Best Model: CatBoost
-                  </CardTitle>
-                  <CardDescription>Highest accuracy on validation set</CardDescription>
-                </div>
+      <div className="space-y-6">
+        {/* Best Model Card */}
+        <Card className="border-yellow-600/50 bg-yellow-600/5">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-yellow-500" />
+                  Best Model: CatBoost
+                </CardTitle>
+                <CardDescription>Highest accuracy on validation set</CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => navigate('/app/inference?model_id=catboost-v1')}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  <FlaskConical className="w-4 h-4 mr-2" />
+                  Test in Lab
+                </Button>
                 <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
                   <Download className="w-4 h-4 mr-2" />
                   Export Model
                 </Button>
               </div>
-            </CardHeader>
+            </div>
+          </CardHeader>
             <CardContent>
               <div className="grid grid-cols-4 gap-4">
                 <div className="p-3 rounded-lg bg-zinc-800/50">
@@ -137,6 +121,13 @@ export function Results() {
                       <TableCell className="text-zinc-400 text-sm">{model.time}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-2 justify-end">
+                          <Button 
+                            onClick={() => navigate(`/app/inference?model_id=${model.id}`)}
+                            className="bg-purple-600 hover:bg-purple-700 text-white"
+                          >
+                            <FlaskConical className="w-4 h-4 mr-1" />
+                            Test in Lab
+                          </Button>
                           <Dialog>
                             <DialogTrigger asChild>
                               <Button variant="ghost" size="sm" title="Serve model">
@@ -235,154 +226,7 @@ export function Results() {
               </Table>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        {/* Inference Lab Tab */}
-        <TabsContent value="inference" className="space-y-6 mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Input Form */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Input Features</CardTitle>
-                <CardDescription>Enter passenger details for prediction</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Passenger Class</label>
-                  <Input
-                    type="number"
-                    value={inferenceData.pclass}
-                    onChange={(e) =>
-                      setInferenceData({ ...inferenceData, pclass: e.target.value })
-                    }
-                    placeholder="1, 2, or 3"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Sex</label>
-                  <Input
-                    value={inferenceData.sex}
-                    onChange={(e) =>
-                      setInferenceData({ ...inferenceData, sex: e.target.value })
-                    }
-                    placeholder="male or female"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Age</label>
-                  <Input
-                    type="number"
-                    value={inferenceData.age}
-                    onChange={(e) =>
-                      setInferenceData({ ...inferenceData, age: e.target.value })
-                    }
-                    placeholder="Age in years"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Siblings/Spouses</label>
-                    <Input
-                      type="number"
-                      value={inferenceData.sibsp}
-                      onChange={(e) =>
-                        setInferenceData({ ...inferenceData, sibsp: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Parents/Children</label>
-                    <Input
-                      type="number"
-                      value={inferenceData.parch}
-                      onChange={(e) =>
-                        setInferenceData({ ...inferenceData, parch: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Fare ($)</label>
-                  <Input
-                    type="number"
-                    value={inferenceData.fare}
-                    onChange={(e) =>
-                      setInferenceData({ ...inferenceData, fare: e.target.value })
-                    }
-                    placeholder="Ticket fare"
-                  />
-                </div>
-                <Button onClick={handlePredict} className="w-full bg-purple-600 hover:bg-purple-700">
-                  <Play className="w-4 h-4 mr-2" />
-                  Predict Survival
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Prediction Result */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Prediction Result</CardTitle>
-                <CardDescription>Model inference output</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {prediction ? (
-                  <div className="space-y-6">
-                    <div
-                      className={`p-8 rounded-lg text-center ${
-                        prediction.survived
-                          ? 'bg-green-600/20 border-2 border-green-600'
-                          : 'bg-red-600/20 border-2 border-red-600'
-                      }`}
-                    >
-                      <div className="text-6xl mb-4">
-                        {prediction.survived ? '✅' : '❌'}
-                      </div>
-                      <div className="text-2xl font-bold mb-2">
-                        {prediction.survived ? 'SURVIVED' : 'DID NOT SURVIVE'}
-                      </div>
-                      <div className="text-zinc-400">
-                        Confidence: {(prediction.confidence * 100).toFixed(1)}%
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-lg bg-zinc-800/50">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Confidence Score</span>
-                        <span className="text-sm text-purple-400">
-                          {(prediction.confidence * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="w-full h-2 bg-zinc-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-purple-600 transition-all"
-                          style={{ width: `${prediction.confidence * 100}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-sm text-zinc-400">
-                      <div className="flex justify-between">
-                        <span>Model Used:</span>
-                        <span className="text-zinc-100">CatBoost (Best)</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Inference Time:</span>
-                        <span className="text-zinc-100">23ms</span>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-zinc-500">
-                    <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>Enter passenger details and click "Predict Survival" to see results</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+        </div>
     </div>
   )
 }

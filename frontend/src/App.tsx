@@ -9,6 +9,7 @@ import { TrainingConfig } from '@/pages/TrainingConfig'
 import { LiveMonitor } from '@/pages/LiveMonitor'
 import { WorkersManager } from '@/pages/WorkersManager'
 import { Results } from '@/pages/Results'
+import { InferencePage } from '@/pages/InferencePage'
 import { LogsPage } from '@/pages/LogsPage'
 import { useSystemEvents } from '@/hooks/useSystemEvents'
 
@@ -32,6 +33,7 @@ function App() {
           <Route path="running" element={<LiveMonitor />} />
           <Route path="workers" element={<WorkersManager />} />
           <Route path="results" element={<Results />} />
+          <Route path="inference" element={<InferencePage />} />
           <Route path="logs" element={<LogsPage />} />
         </Route>
 
