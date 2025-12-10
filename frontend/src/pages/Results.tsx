@@ -31,7 +31,7 @@ export function Results() {
 
       <div className="space-y-6">
         {/* Best Model Card */}
-        <Card className="border-yellow-600/50 bg-yellow-600/5">
+        <Card className="border-yellow-600">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>

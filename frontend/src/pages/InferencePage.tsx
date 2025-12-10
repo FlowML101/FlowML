@@ -284,7 +284,7 @@ export function InferencePage() {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <Card className={`border-2 ${prediction.survived ? 'border-green-600/50 bg-green-600/5' : 'border-red-600/50 bg-red-600/5'}`}>
+                <Card className={`border-2 ${prediction.survived ? 'border-green-600/50' : 'border-red-600/50 bg-red-600/5'}`}>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <TrendingUp className={`w-5 h-5 ${prediction.survived ? 'text-green-500' : 'text-red-500'}`} />

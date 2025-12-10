@@ -9,7 +9,7 @@ export function ClusterHealth() {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-purple-500" />
+              <Activity className="w-5 h-20 text-purple-500" />
               Cluster Status
             </CardTitle>
             <CardDescription>Mesh network health and connectivity</CardDescription>

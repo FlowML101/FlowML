@@ -77,7 +77,7 @@ export function FeaturesGrid() {
               transition={{ duration: 0.5, delay: index * 0.1 }}
               viewport={{ once: true }}
             >
-              <Card className="group hover:border-purple-600/50 transition-all duration-300 h-full bg-zinc-900/50 backdrop-blur-sm">
+              <Card className="group hover:border-purple-600/50 transition-all duration-300 h-full bg-zinc-900/100 backdrop-blur-sm">
                 <CardHeader>
                   <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${feature.gradient} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                     <feature.icon className="w-6 h-6 text-white" />

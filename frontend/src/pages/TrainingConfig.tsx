@@ -165,7 +165,7 @@ export function TrainingConfig() {
           </Card>
 
           {/* Start Training */}
-          <Card className="border-purple-600/50 bg-purple-600/5">
+          <Card className="border-purple-600/50">
             <CardHeader>
               <CardTitle className="text-lg">Ready to Launch</CardTitle>
             </CardHeader>

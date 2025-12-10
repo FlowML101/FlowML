@@ -77,7 +77,7 @@ export function CTA() {
             <Link to="/app">
               <Button
                 size="lg"
-                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-10 py-6 text-lg font-semibold rounded-xl shadow-2xl shadow-purple-600/50 hover:shadow-purple-600/70 transition-all group"
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-10 py-6 text-lg font-semibold rounded-xl transition-all group"
               >
                 Launch Studio Now
                 <Rocket className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />

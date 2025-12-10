@@ -9,12 +9,18 @@ import {
   FlaskConical,
   ScrollText,
   ChevronRight,
-  Bell,
   Settings,
-  User
+  User,
+  Sun,
+  Moon,
+  Palette,
+  Search
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { NotificationCenter } from '@/components/NotificationCenter'
+import { PageTransition } from '@/components/PageTransition'
+import { useTheme } from '@/contexts/ThemeContext'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -32,6 +38,8 @@ const navigation = [
 export function DashboardLayout() {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [showThemeMenu, setShowThemeMenu] = useState(false)
+  const { theme, accentColor, toggleTheme, setAccentColor } = useTheme()
 
   // Generate breadcrumbs
   const pathSegments = location.pathname.split('/').filter(Boolean)
@@ -70,15 +78,18 @@ export function DashboardLayout() {
                 key={item.name}
                 to={item.href}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group",
+                  "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-300 group relative overflow-hidden",
                   isActive
-                    ? "bg-purple-600/20 text-purple-400"
-                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50"
+                    ? "bg-primary/20 text-primary shadow-lg shadow-primary/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
                 )}
               >
-                <item.icon className={cn("w-5 h-5 flex-shrink-0", isActive && "text-purple-400")} />
+                {isActive && (
+                  <span className="absolute inset-0 bg-gradient-to-r from-primary/20 to-transparent opacity-50" />
+                )}
+                <item.icon className={cn("w-5 h-5 flex-shrink-0 relative z-10", isActive && "text-primary")} />
                 {sidebarOpen && (
-                  <span className="text-sm font-medium">{item.name}</span>
+                  <span className="text-sm font-medium relative z-10">{item.name}</span>
                 )}
               </Link>
             )
@@ -113,35 +124,91 @@ export function DashboardLayout() {
       {/* Main Content Area */}
       <div className={cn("transition-all duration-300", sidebarOpen ? "ml-64" : "ml-16")}>
         {/* Top Bar */}
-        <header className="h-16 border-b border-zinc-800 bg-zinc-900/30 backdrop-blur-xl flex items-center justify-between px-6 sticky top-0 z-30">
-          {/* Breadcrumbs */}
-          <div className="flex items-center gap-2 text-sm">
-            {breadcrumbs.map((crumb, index) => (
-              <div key={crumb.href} className="flex items-center gap-2">
-                {index > 0 && <ChevronRight className="w-4 h-4 text-zinc-600" />}
-                <Link
-                  to={crumb.href}
-                  className={cn(
-                    "hover:text-purple-400 transition-colors",
-                    index === breadcrumbs.length - 1 ? "text-zinc-50" : "text-zinc-500"
-                  )}
-                >
-                  {crumb.name}
-                </Link>
-              </div>
+        <header className="h-16 border-b border-border bg-card/30 backdrop-blur-xl flex items-center justify-between px-6 sticky top-0 z-30">
+          {/* Left: Breadcrumbs + Search */}
+          <div className="flex items-center gap-4 flex-1">
+            {/* Breadcrumbs */}
+            <div className="flex items-center gap-2 text-sm">
+              {breadcrumbs.map((crumb, index) => (
+                <div key={crumb.href} className="flex items-center gap-2">
+                  {index > 0 && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                  <Link
+                    to={crumb.href}
+                    className={cn(
+                      "hover:text-primary transition-colors",
+                      index === breadcrumbs.length - 1 ? "text-foreground" : "text-muted-foreground"
+                    )}
+                  >
+                    {crumb.name}
+                  </Link>
+                </div>
             ))}
+            </div>
+            
+            {/* Search Bar */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search pages... (Ctrl+K)"
+                onClick={() => {
+                  const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true })
+                  window.dispatchEvent(event)
+                }}
+                readOnly
+                className="w-full h-9 pl-9 pr-4 rounded-lg bg-muted/50 border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all cursor-pointer hover:bg-muted"
+              />
+            </div>
           </div>
 
           {/* Right Actions */}
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-purple-600 rounded-full"></span>
+          <div className="flex items-center gap-2">
+            {/* Notification Center */}
+            <NotificationCenter />
+
+            {/* Theme Toggle */}
+            <Button onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
+              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </Button>
-            <Button variant="ghost" size="icon">
+
+            {/* Theme Customization */}
+            <div className="relative">
+              <Button onClick={() => setShowThemeMenu(!showThemeMenu)} title="Customize theme">
+                <Palette className="w-5 h-5" />
+              </Button>
+              {showThemeMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowThemeMenu(false)} />
+                  <div className="absolute right-0 top-12 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 p-4">
+                    <h3 className="font-semibold mb-3">Accent Color</h3>
+                    <div className="grid grid-cols-4 gap-2">
+                      {['purple', 'blue', 'green', 'orange'].map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => {
+                            setAccentColor(color as any)
+                            setShowThemeMenu(false)
+                          }}
+                          className={cn(
+                            "h-10 rounded-lg transition-all",
+                            color === 'purple' && 'bg-purple-600',
+                            color === 'blue' && 'bg-blue-600',
+                            color === 'green' && 'bg-green-600',
+                            color === 'orange' && 'bg-orange-600',
+                            accentColor === color && 'ring-2 ring-white ring-offset-2 ring-offset-zinc-900'
+                          )}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <Button title="Settings">
               <Settings className="w-5 h-5" />
             </Button>
-            <Button variant="ghost" size="icon">
+            <Button title="Profile">
               <User className="w-5 h-5" />
             </Button>
           </div>
@@ -149,7 +216,9 @@ export function DashboardLayout() {
 
         {/* Page Content */}
         <main className="p-6">
-          <Outlet />
+          <PageTransition>
+            <Outlet />
+          </PageTransition>
         </main>
       </div>
     </div>

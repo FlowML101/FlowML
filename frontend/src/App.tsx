@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
+import { ThemeProvider } from '@/contexts/ThemeContext'
+import { CommandPalette } from '@/components/CommandPalette'
 import { MarketingLayout } from '@/layouts/MarketingLayout'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
 import { LandingPage } from '@/pages/LandingPage'
@@ -17,9 +19,11 @@ function App() {
   useSystemEvents()
 
   return (
-    <BrowserRouter>
-      <Toaster position="top-right" theme="dark" richColors />
-      <Routes>
+    <ThemeProvider>
+      <BrowserRouter>
+        <Toaster position="top-right" richColors />
+        <CommandPalette />
+        <Routes>
         {/* Marketing Zone */}
         <Route element={<MarketingLayout />}>
           <Route path="/" element={<LandingPage />} />
@@ -40,7 +44,8 @@ function App() {
         {/* Catch all - redirect to home */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+      </BrowserRouter>
+    </ThemeProvider>
   )
 }
 
