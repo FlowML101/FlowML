@@ -4,14 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
+import { Label } from '@/components/ui/label'
 import { Zap, Network, Play, Settings2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-
-const Label2 = ({ children, ...props }: any) => (
-  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70" {...props}>
-    {children}
-  </label>
-)
 
 export function TrainingConfig() {
   const navigate = useNavigate()
@@ -22,27 +17,38 @@ export function TrainingConfig() {
     navigate('/app/running')
   }
 
+  const workers = [
+    { id: 1, status: 'idle' },
+    { id: 2, status: 'idle' },
+    { id: 3, status: 'busy' }
+  ]
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-          <Zap className="w-8 h-8 text-yellow-500" />
-          Training Configuration
-        </h1>
-        <p className="text-zinc-400">Configure AutoML pipeline for your dataset</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+            <Zap className="w-8 h-8 text-yellow-500" />
+            Training Configuration
+          </h1>
+          <p className="text-muted-foreground">Configure and launch AutoML training jobs with optimized hyperparameters</p>
+        </div>
+        <Badge variant="outline" className="text-sm px-4 py-2">
+          {workers.filter(w => w.status === 'idle').length} workers available
+        </Badge>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Configuration */}
         <div className="lg:col-span-2 space-y-6">
           {/* Dataset Info */}
-          <Card>
-            <CardHeader>
+          <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-yellow-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-yellow-500/12">
+            <CardHeader className="relative">
               <CardTitle>Dataset</CardTitle>
               <CardDescription>titanic.csv</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="relative">
               <div className="flex gap-2">
                 <Badge variant="outline">891 rows</Badge>
                 <Badge variant="outline">12 columns</Badge>
@@ -52,18 +58,18 @@ export function TrainingConfig() {
           </Card>
 
           {/* Target Column */}
-          <Card>
-            <CardHeader>
+          <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-yellow-500/10 before:via-orange-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-yellow-500/12">
+            <CardHeader className="relative">
               <CardTitle className="flex items-center gap-2">
                 <Settings2 className="w-5 h-5 text-purple-500" />
                 Model Configuration
               </CardTitle>
               <CardDescription>Select prediction target and training parameters</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-6 relative">
               {/* Target Column */}
               <div className="space-y-2">
-                <Label2 htmlFor="target">Target Column</Label2>
+                <Label htmlFor="target">Target Column</Label>
                 <Select value={targetColumn} onValueChange={setTargetColumn}>
                   <SelectTrigger id="target">
                     <SelectValue placeholder="Select target column" />
@@ -74,7 +80,7 @@ export function TrainingConfig() {
                     <SelectItem value="Age">Age</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-muted-foreground">
                   Column to predict (dependent variable)
                 </p>
               </div>
@@ -82,7 +88,7 @@ export function TrainingConfig() {
               {/* Time Budget */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <Label2>Time Budget</Label2>
+                  <Label>Time Budget</Label>
                   <Badge variant="secondary">{timeBudget[0]} minutes</Badge>
                 </div>
                 <Slider
@@ -93,24 +99,24 @@ export function TrainingConfig() {
                   step={1}
                   className="w-full"
                 />
-                <div className="flex justify-between text-xs text-zinc-500">
+                <div className="flex justify-between text-xs text-muted-foreground">
                   <span>1 min</span>
                   <span>60 min</span>
                 </div>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-muted-foreground">
                   Maximum time to search for best model
                 </p>
               </div>
 
               {/* Model Types */}
               <div className="space-y-2">
-                <Label2>Model Types</Label2>
+                <Label>Model Types</Label>
                 <div className="grid grid-cols-2 gap-3">
                   {['XGBoost', 'Random Forest', 'LightGBM', 'CatBoost', 'Linear', 'Neural Net'].map(
                     (model) => (
                       <div
                         key={model}
-                        className="flex items-center space-x-2 p-3 rounded-lg bg-zinc-800/30 border border-zinc-700"
+                        className="flex items-center space-x-2 p-3 rounded-lg bg-muted/30 dark:bg-zinc-800/30 border border-border dark:border-zinc-700"
                       >
                         <input
                           type="checkbox"
@@ -129,12 +135,12 @@ export function TrainingConfig() {
 
         {/* Compute Configuration */}
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
+          <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-green-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-green-500/12">
+            <CardHeader className="relative">
               <CardTitle>Compute Mode</CardTitle>
               <CardDescription>Automatic distributed training across your mesh</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="relative">
               <div className="p-4 rounded-lg border-2 border-purple-600 bg-purple-600/10">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -143,7 +149,7 @@ export function TrainingConfig() {
                   </div>
                   <Badge variant="success" className="text-xs">Active</Badge>
                 </div>
-                <p className="text-xs text-zinc-500 mb-3">
+                <p className="text-xs text-muted-foreground mb-3">
                   Intelligently distributes workload across your mesh network (2 workers available)
                 </p>
                 <div className="space-y-1 text-xs">
@@ -165,11 +171,11 @@ export function TrainingConfig() {
           </Card>
 
           {/* Start Training */}
-          <Card className="border-purple-600/50">
-            <CardHeader>
+          <Card className="border-yellow-600/50 bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-yellow-500/20 before:to-orange-500/20 before:opacity-70 shadow-lg shadow-yellow-500/20 transition-all duration-300 hover:shadow-xl hover:shadow-yellow-500/25">
+            <CardHeader className="relative">
               <CardTitle className="text-lg">Ready to Launch</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="relative">
               <Button
                 onClick={handleStartTraining}
                 className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-lg py-6"
@@ -177,7 +183,7 @@ export function TrainingConfig() {
                 <Play className="w-5 h-5 mr-2" />
                 Start Training
               </Button>
-              <p className="text-xs text-zinc-500 mt-3 text-center">
+              <p className="text-xs text-muted-foreground mt-3 text-center">
                 Estimated: {timeBudget[0]} min • ~20 models • Auto-Distributed
               </p>
             </CardContent>

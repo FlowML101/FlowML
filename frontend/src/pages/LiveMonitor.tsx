@@ -3,7 +3,6 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingDown, Terminal, Activity, Zap } from 'lucide-react'
-import { useEffect, useState } from 'react'
 
 // Mock training data
 const generateMockData = (length: number) => {
@@ -32,31 +31,10 @@ const mockLogs = [
 ]
 
 export function LiveMonitor() {
-  const [chartData, setChartData] = useState(generateMockData(10))
-  const [logs, setLogs] = useState(mockLogs.slice(0, 8))
-  const [progress, setProgress] = useState(25)
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Simulate real-time updates
-      if (logs.length < mockLogs.length) {
-        setLogs((prev) => [...prev, mockLogs[prev.length]])
-      }
-      if (chartData.length < 25) {
-        setChartData((prev) => [
-          ...prev,
-          {
-            epoch: prev.length + 1,
-            loss: Math.max(0.15, prev[prev.length - 1].loss - 0.02 + Math.random() * 0.01),
-            accuracy: Math.min(0.95, prev[prev.length - 1].accuracy + 0.015 + Math.random() * 0.01),
-          },
-        ])
-      }
-      setProgress((prev) => Math.min(100, prev + 3))
-    }, 2000)
-
-    return () => clearInterval(interval)
-  }, [logs.length, chartData.length])
+  // Backend will provide real-time data via WebSocket
+  const chartData = generateMockData(10)
+  const logs = mockLogs.slice(0, 8)
+  const progress = 25
 
   return (
     <div className="space-y-6">
@@ -64,20 +42,25 @@ export function LiveMonitor() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-            <Activity className="w-8 h-8 text-purple-500 animate-pulse" />
+            <Activity className="w-8 h-8 text-green-500" />
             Live Training Monitor
           </h1>
-          <p className="text-zinc-400">Real-time model training progress</p>
+          <p className="text-muted-foreground">Real-time training progress, metrics visualization, and performance tracking</p>
         </div>
-        <Badge variant="default" className="text-base px-4 py-2">
-          <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse mr-2"></span>
-          Training in Progress
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className="text-sm px-4 py-2">
+            Epoch {chartData.length}/25
+          </Badge>
+          <Badge variant="default" className="text-sm px-4 py-2 bg-green-600">
+            <div className="w-2 h-2 bg-white rounded-full animate-pulse mr-2"></div>
+            Training
+          </Badge>
+        </div>
       </div>
 
       {/* Progress Overview */}
-      <Card>
-        <CardHeader>
+      <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-green-500/10 before:via-emerald-500/10 before:to-green-500/10 before:opacity-30 before:animate-pulse transition-all duration-300 hover:shadow-md hover:shadow-green-500/12">
+        <CardHeader className="relative">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Training Progress</CardTitle>
@@ -89,23 +72,23 @@ export function LiveMonitor() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="relative">
           <Progress value={progress} className="h-3" />
           <div className="mt-4 grid grid-cols-3 gap-4">
-            <div className="p-3 rounded-lg bg-zinc-800/50">
-              <div className="text-xs text-zinc-500">Best Accuracy</div>
+            <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
+              <div className="text-xs text-muted-foreground">Best Accuracy</div>
               <div className="text-xl font-bold text-green-400">83.1%</div>
-              <div className="text-xs text-zinc-500 mt-1">CatBoost</div>
+              <div className="text-xs text-muted-foreground mt-1">CatBoost</div>
             </div>
-            <div className="p-3 rounded-lg bg-zinc-800/50">
-              <div className="text-xs text-zinc-500">Time Elapsed</div>
+            <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
+              <div className="text-xs text-muted-foreground">Time Elapsed</div>
               <div className="text-xl font-bold">0:38</div>
-              <div className="text-xs text-zinc-500 mt-1">~11 min left</div>
+              <div className="text-xs text-muted-foreground mt-1">~11 min left</div>
             </div>
-            <div className="p-3 rounded-lg bg-zinc-800/50">
-              <div className="text-xs text-zinc-500">Current Model</div>
+            <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
+              <div className="text-xs text-muted-foreground">Current Model</div>
               <div className="text-xl font-bold text-purple-400">Linear</div>
-              <div className="text-xs text-zinc-500 mt-1">Training...</div>
+              <div className="text-xs text-muted-foreground mt-1">Training...</div>
             </div>
           </div>
         </CardContent>
@@ -113,15 +96,15 @@ export function LiveMonitor() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Real-time Chart */}
-        <Card>
-          <CardHeader>
+        <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-green-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-green-500/12">
+          <CardHeader className="relative">
             <CardTitle className="flex items-center gap-2">
               <TrendingDown className="w-5 h-5 text-blue-500" />
               Loss Curve
             </CardTitle>
             <CardDescription>Training loss over time</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative">
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
@@ -151,15 +134,15 @@ export function LiveMonitor() {
         </Card>
 
         {/* Accuracy Chart */}
-        <Card>
-          <CardHeader>
+        <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-green-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-green-500/12">
+          <CardHeader className="relative">
             <CardTitle className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-green-500" />
               Accuracy Curve
             </CardTitle>
             <CardDescription>Model accuracy over time</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative">
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
@@ -190,15 +173,15 @@ export function LiveMonitor() {
       </div>
 
       {/* Terminal Logs */}
-      <Card>
-        <CardHeader>
+      <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-green-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-green-500/12">
+        <CardHeader className="relative">
           <CardTitle className="flex items-center gap-2">
             <Terminal className="w-5 h-5 text-zinc-400" />
             Training Logs
           </CardTitle>
           <CardDescription>Real-time output from training pipeline</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="relative">
           <div className="bg-black rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm">
             {logs.map((log, index) => (
               <div key={index} className="text-green-400 mb-1">

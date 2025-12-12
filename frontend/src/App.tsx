@@ -12,6 +12,11 @@ import { LiveMonitor } from '@/pages/LiveMonitor'
 import { WorkersManager } from '@/pages/WorkersManager'
 import { Results } from '@/pages/Results'
 import { InferencePage } from '@/pages/InferencePage'
+import { ModelComparison } from '@/pages/ModelComparison'
+import { ExperimentHistory } from '@/pages/ExperimentHistory'
+import { BatchInference } from '@/pages/BatchInference'
+import { ResourceScheduler } from '@/pages/ResourceScheduler'
+import { AdvancedDataViz } from '@/pages/AdvancedDataViz'
 import { LogsPage } from '@/pages/LogsPage'
 import { useSystemEvents } from '@/hooks/useSystemEvents'
 
@@ -38,6 +43,11 @@ function App() {
           <Route path="workers" element={<WorkersManager />} />
           <Route path="results" element={<Results />} />
           <Route path="inference" element={<InferencePage />} />
+          <Route path="compare" element={<ModelComparison />} />
+          <Route path="history" element={<ExperimentHistory />} />
+          <Route path="deploy" element={<BatchInference />} />
+          <Route path="schedule" element={<ResourceScheduler />} />
+          <Route path="visualizations" element={<AdvancedDataViz />} />
           <Route path="logs" element={<LogsPage />} />
         </Route>
 

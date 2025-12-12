@@ -21,8 +21,8 @@ const columns = ['PassengerId', 'Survived', 'Pclass', 'Name', 'Sex', 'Age', 'Sib
 
 export function DataPreview() {
   return (
-    <Card>
-      <CardHeader>
+    <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-transparent before:to-cyan-500/10 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12">
+      <CardHeader className="relative">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
@@ -37,8 +37,8 @@ export function DataPreview() {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="border border-zinc-800 rounded-lg overflow-hidden">
+      <CardContent className="relative">
+        <div className="border border-border dark:border-zinc-800 rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -66,7 +66,7 @@ export function DataPreview() {
                         {row.Sex}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-zinc-400">{row.Age || 'N/A'}</TableCell>
+                    <TableCell className="text-muted-foreground">{row.Age || 'N/A'}</TableCell>
                     <TableCell>{row.SibSp}</TableCell>
                     <TableCell>{row.Parch}</TableCell>
                     <TableCell className="font-mono text-xs">${row.Fare.toFixed(2)}</TableCell>
@@ -77,7 +77,7 @@ export function DataPreview() {
           </div>
         </div>
         
-        <div className="mt-4 text-xs text-zinc-500 text-center">
+        <div className="mt-4 text-xs text-muted-foreground text-center">
           Showing 10 of 891 rows
         </div>
       </CardContent>

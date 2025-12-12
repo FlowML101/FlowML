@@ -3,16 +3,11 @@ import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { FlaskConical, Play, Sparkles, TrendingUp, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-
-const Label2 = ({ children, ...props }: any) => (
-  <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70" {...props}>
-    {children}
-  </label>
-)
 
 const mockModels = [
   { id: 'catboost-v1', name: 'CatBoost v1', accuracy: 0.983, status: 'ready' },
@@ -83,27 +78,39 @@ export function InferencePage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-          <FlaskConical className="w-8 h-8 text-purple-500" />
-          Model Playground
-        </h1>
-        <p className="text-zinc-400">Test your trained models with real-time inputs</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+            <FlaskConical className="w-8 h-8 text-purple-500" />
+            Model Playground
+          </h1>
+          <p className="text-muted-foreground">Test trained models with real-time inputs and instant predictions</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className="text-sm px-4 py-2">
+            {mockModels.length} models available
+          </Badge>
+          {currentModel && (
+            <Badge className="bg-purple-600 text-sm px-4 py-2">
+              {currentModel.name} • {(currentModel.accuracy * 100).toFixed(1)}%
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Model Selector + Input Form */}
         <div className="lg:col-span-2 space-y-6">
           {/* Model Selector */}
-          <Card className="border-purple-600/30">
-            <CardHeader>
+          <Card className="border-purple-600/30 bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-purple-500/20 before:via-pink-500/10 before:to-blue-500/20 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-purple-500/12">
+            <CardHeader className="relative">
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-purple-500" />
                 Select Model
               </CardTitle>
               <CardDescription>Choose which trained model to use for inference</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="relative">
               <div className="space-y-4">
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
                   <SelectTrigger>
@@ -127,7 +134,7 @@ export function InferencePage() {
                   <div className="flex items-center justify-between p-3 rounded-lg bg-purple-600/10 border border-purple-600/30">
                     <div>
                       <div className="text-sm font-medium">{currentModel.name}</div>
-                      <div className="text-xs text-zinc-500">Accuracy: {(currentModel.accuracy * 100).toFixed(1)}%</div>
+                      <div className="text-xs text-muted-foreground">Accuracy: {(currentModel.accuracy * 100).toFixed(1)}%</div>
                     </div>
                     <Badge variant="success">Ready</Badge>
                   </div>
@@ -137,15 +144,15 @@ export function InferencePage() {
           </Card>
 
           {/* Input Form */}
-          <Card>
-            <CardHeader>
+          <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12">
+            <CardHeader className="relative">
               <CardTitle>Input Features</CardTitle>
               <CardDescription>Enter passenger details for prediction</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 relative">
               {/* Passenger Class */}
               <div className="space-y-2">
-                <Label2 htmlFor="pclass">Passenger Class</Label2>
+                <Label htmlFor="pclass">Passenger Class</Label>
                 <Select
                   value={inputData.pclass}
                   onValueChange={(value) => setInputData({ ...inputData, pclass: value })}
@@ -163,7 +170,7 @@ export function InferencePage() {
 
               {/* Sex */}
               <div className="space-y-2">
-                <Label2 htmlFor="sex">Sex</Label2>
+                <Label htmlFor="sex">Sex</Label>
                 <Select
                   value={inputData.sex}
                   onValueChange={(value) => setInputData({ ...inputData, sex: value })}
@@ -180,7 +187,7 @@ export function InferencePage() {
 
               {/* Age */}
               <div className="space-y-2">
-                <Label2 htmlFor="age">Age</Label2>
+                <Label htmlFor="age">Age</Label>
                 <Input
                   id="age"
                   type="number"
@@ -193,7 +200,7 @@ export function InferencePage() {
               {/* Siblings/Spouses */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label2 htmlFor="sibsp">Siblings/Spouses Aboard</Label2>
+                  <Label htmlFor="sibsp">Siblings/Spouses Aboard</Label>
                   <Input
                     id="sibsp"
                     type="number"
@@ -203,7 +210,7 @@ export function InferencePage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label2 htmlFor="parch">Parents/Children Aboard</Label2>
+                  <Label htmlFor="parch">Parents/Children Aboard</Label>
                   <Input
                     id="parch"
                     type="number"
@@ -216,7 +223,7 @@ export function InferencePage() {
 
               {/* Fare */}
               <div className="space-y-2">
-                <Label2 htmlFor="fare">Fare</Label2>
+                <Label htmlFor="fare">Fare</Label>
                 <Input
                   id="fare"
                   type="number"
@@ -229,7 +236,7 @@ export function InferencePage() {
 
               {/* Embarked */}
               <div className="space-y-2">
-                <Label2 htmlFor="embarked">Port of Embarkation</Label2>
+                <Label htmlFor="embarked">Port of Embarkation</Label>
                 <Select
                   value={inputData.embarked}
                   onValueChange={(value) => setInputData({ ...inputData, embarked: value })}
@@ -249,7 +256,7 @@ export function InferencePage() {
               <Button
                 onClick={handlePredict}
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-lg py-6"
+                className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-lg py-6"
               >
                 {isLoading ? (
                   <>
@@ -284,22 +291,22 @@ export function InferencePage() {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <Card className={`border-2 ${prediction.survived ? 'border-green-600/50' : 'border-red-600/50 bg-red-600/5'}`}>
-                  <CardHeader>
+                <Card className={`border-2 ${prediction.survived ? 'border-green-600/50 bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-green-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-green-500/12' : 'border-red-600/50 bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-red-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-red-500/12'}`}>
+                  <CardHeader className="relative">
                     <CardTitle className="flex items-center gap-2">
                       <TrendingUp className={`w-5 h-5 ${prediction.survived ? 'text-green-500' : 'text-red-500'}`} />
                       Prediction Result
                     </CardTitle>
                     <CardDescription>Model: {prediction.model}</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-6">
+                  <CardContent className="space-y-6 relative">
                     {/* Main Prediction */}
-                    <div className="text-center p-6 rounded-xl bg-zinc-900/50 border border-zinc-700">
-                      <div className="text-sm text-zinc-500 mb-2">Survival Prediction</div>
+                    <div className="text-center p-6 rounded-xl bg-muted/50 dark:bg-zinc-900/50 border border-border dark:border-zinc-700">
+                      <div className="text-sm text-muted-foreground mb-2">Survival Prediction</div>
                       <div className={`text-4xl font-bold mb-2 ${prediction.survived ? 'text-green-400' : 'text-red-400'}`}>
                         {prediction.survived ? 'Survived' : 'Did Not Survive'}
                       </div>
-                      <div className="text-lg text-zinc-400">
+                      <div className="text-lg text-muted-foreground">
                         {(prediction.confidence * 100).toFixed(1)}% Confidence
                       </div>
                     </div>
@@ -322,12 +329,12 @@ export function InferencePage() {
 
                     {/* Stats */}
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 rounded-lg bg-zinc-800/50 text-center">
-                        <div className="text-xs text-zinc-500">Latency</div>
+                      <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50 text-center">
+                        <div className="text-xs text-muted-foreground">Latency</div>
                         <div className="text-lg font-bold text-blue-400">{prediction.latency}ms</div>
                       </div>
-                      <div className="p-3 rounded-lg bg-zinc-800/50 text-center">
-                        <div className="text-xs text-zinc-500">Model</div>
+                      <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50 text-center">
+                        <div className="text-xs text-muted-foreground">Model</div>
                         <div className="text-sm font-bold text-purple-400 truncate">{prediction.model}</div>
                       </div>
                     </div>
@@ -349,20 +356,20 @@ export function InferencePage() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
-                <Card className="border-zinc-700">
-                  <CardHeader>
+                <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-purple-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-purple-500/12">
+                  <CardHeader className="relative">
                     <CardTitle className="flex items-center gap-2">
-                      <FlaskConical className="w-5 h-5 text-zinc-500" />
+                      <FlaskConical className="w-5 h-5 text-muted-foreground" />
                       Awaiting Prediction
                     </CardTitle>
                     <CardDescription>Fill in the form and click "Run Prediction"</CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="relative">
                     <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <div className="w-20 h-20 rounded-full bg-zinc-800/50 flex items-center justify-center mb-4">
-                        <Play className="w-10 h-10 text-zinc-600" />
+                      <div className="w-20 h-20 rounded-full bg-muted/50 dark:bg-zinc-800/50 flex items-center justify-center mb-4">
+                        <Play className="w-10 h-10 text-muted-foreground" />
                       </div>
-                      <p className="text-sm text-zinc-500">
+                      <p className="text-sm text-muted-foreground">
                         Your prediction results will appear here
                       </p>
                     </div>

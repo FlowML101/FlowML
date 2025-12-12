@@ -124,14 +124,14 @@ export function NotificationCenter() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -10, scale: 0.95 }}
               transition={{ duration: 0.2 }}
-              className="absolute right-0 top-12 w-96 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 overflow-hidden"
+              className="absolute right-0 top-12 w-96 bg-background border border-border dark:border-zinc-700 rounded-lg shadow-2xl z-50 overflow-hidden"
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 bg-zinc-800/50">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border dark:border-zinc-700 bg-muted/50 dark:bg-zinc-800/50">
                 <div>
                   <h3 className="font-semibold">Notifications</h3>
                   {unreadCount > 0 && (
-                    <p className="text-xs text-zinc-500">{unreadCount} unread</p>
+                    <p className="text-xs text-muted-foreground">{unreadCount} unread</p>
                   )}
                 </div>
                 {unreadCount > 0 && (
@@ -148,7 +148,7 @@ export function NotificationCenter() {
               {/* Notifications List */}
               <div className="max-h-[500px] overflow-y-auto">
                 {notifications.length === 0 ? (
-                  <div className="px-4 py-12 text-center text-zinc-500">
+                  <div className="px-4 py-12 text-center text-muted-foreground">
                     <Bell className="w-12 h-12 mx-auto mb-3 opacity-50" />
                     <p>No notifications</p>
                   </div>
@@ -162,7 +162,7 @@ export function NotificationCenter() {
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 20 }}
                         onClick={() => !notif.read && markAsRead(notif.id)}
-                        className={`px-4 py-3 cursor-pointer transition-colors hover:bg-zinc-800/50 ${
+                        className={`px-4 py-3 cursor-pointer transition-colors hover:bg-muted/50 dark:hover:bg-zinc-800/50 ${
                           !notif.read ? 'bg-purple-600/5' : ''
                         }`}
                       >
@@ -178,7 +178,7 @@ export function NotificationCenter() {
                           {/* Content */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2 mb-1">
-                              <h4 className={`font-medium text-sm ${!notif.read ? 'text-white' : 'text-zinc-300'}`}>
+                              <h4 className={`font-medium text-sm ${!notif.read ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>
                                 {notif.title}
                               </h4>
                               <Button
@@ -191,7 +191,7 @@ export function NotificationCenter() {
                                 <X className="w-3 h-3" />
                               </Button>
                             </div>
-                            <p className="text-xs text-zinc-500 mb-1">{notif.message}</p>
+                            <p className="text-xs text-muted-foreground mb-1">{notif.message}</p>
                             <div className="flex items-center gap-2">
                               <Badge variant="secondary" className={`text-xs ${getTypeColor(notif.type)}`}>
                                 {notif.type}

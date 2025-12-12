@@ -17,22 +17,34 @@ const mockModels = [
 
 export function Results() {
   const navigate = useNavigate()
+  const bestModel = mockModels[0]
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-          <Trophy className="w-8 h-8 text-yellow-500" />
-          Model Results
-        </h1>
-        <p className="text-zinc-400">Training leaderboard and model comparison</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+            <Trophy className="w-8 h-8 text-yellow-500" />
+            Training Results
+          </h1>
+          <p className="text-muted-foreground">Performance leaderboard and model evaluation metrics</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className="text-sm px-4 py-2">
+            {mockModels.length} models trained
+          </Badge>
+          <Button className="bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700">
+            <Download className="w-4 h-4 mr-2" />
+            Export Report
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-6">
         {/* Best Model Card */}
-        <Card className="border-yellow-600">
-          <CardHeader>
+        <Card className="border-yellow-600/50 bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-yellow-500/20 before:via-amber-500/10 before:to-orange-500/20 before:opacity-70 shadow-lg shadow-yellow-500/20">
+          <CardHeader className="relative">
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
@@ -44,34 +56,34 @@ export function Results() {
               <div className="flex gap-2">
                 <Button 
                   onClick={() => navigate('/app/inference?model_id=catboost-v1')}
-                  className="bg-purple-600 hover:bg-purple-700"
+                  className="bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700"
                 >
                   <FlaskConical className="w-4 h-4 mr-2" />
                   Test in Lab
                 </Button>
-                <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
+                <Button className="bg-gradient-to-r from-yellow-600 via-amber-600 to-orange-600 hover:from-yellow-700 hover:via-amber-700 hover:to-orange-700">
                   <Download className="w-4 h-4 mr-2" />
                   Export Model
                 </Button>
               </div>
             </div>
           </CardHeader>
-            <CardContent>
+            <CardContent className="relative">
               <div className="grid grid-cols-4 gap-4">
-                <div className="p-3 rounded-lg bg-zinc-800/50">
-                  <div className="text-xs text-zinc-500">Accuracy</div>
+                <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
+                  <div className="text-xs text-muted-foreground">Accuracy</div>
                   <div className="text-2xl font-bold text-green-400">98.3%</div>
                 </div>
-                <div className="p-3 rounded-lg bg-zinc-800/50">
-                  <div className="text-xs text-zinc-500">F1 Score</div>
+                <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
+                  <div className="text-xs text-muted-foreground">F1 Score</div>
                   <div className="text-2xl font-bold text-blue-400">0.981</div>
                 </div>
-                <div className="p-3 rounded-lg bg-zinc-800/50">
-                  <div className="text-xs text-zinc-500">Precision</div>
+                <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
+                  <div className="text-xs text-muted-foreground">Precision</div>
                   <div className="text-2xl font-bold text-purple-400">0.985</div>
                 </div>
-                <div className="p-3 rounded-lg bg-zinc-800/50">
-                  <div className="text-xs text-zinc-500">Recall</div>
+                <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
+                  <div className="text-xs text-muted-foreground">Recall</div>
                   <div className="text-2xl font-bold text-yellow-400">0.978</div>
                 </div>
               </div>
@@ -79,12 +91,12 @@ export function Results() {
           </Card>
 
           {/* All Models Table */}
-          <Card>
-            <CardHeader>
+          <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-yellow-500/10 before:via-transparent before:to-orange-500/10 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-yellow-500/12">
+            <CardHeader className="relative">
               <CardTitle>All Models</CardTitle>
               <CardDescription>Complete ranking of trained models</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="relative">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -115,10 +127,10 @@ export function Results() {
                           {(model.accuracy * 100).toFixed(1)}%
                         </span>
                       </TableCell>
-                      <TableCell className="text-zinc-300">{model.f1.toFixed(3)}</TableCell>
-                      <TableCell className="text-zinc-300">{model.precision.toFixed(3)}</TableCell>
-                      <TableCell className="text-zinc-300">{model.recall.toFixed(3)}</TableCell>
-                      <TableCell className="text-zinc-400 text-sm">{model.time}</TableCell>
+                      <TableCell className="text-foreground">{model.f1.toFixed(3)}</TableCell>
+                      <TableCell className="text-foreground">{model.precision.toFixed(3)}</TableCell>
+                      <TableCell className="text-foreground">{model.recall.toFixed(3)}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{model.time}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-2 justify-end">
                           <Button 
@@ -199,16 +211,16 @@ export function Results() {
 
                                 {/* Stats */}
                                 <div className="grid grid-cols-3 gap-3">
-                                  <div className="p-3 rounded-lg bg-zinc-800/50 text-center">
-                                    <div className="text-xs text-zinc-500">Avg Latency</div>
+                                  <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50 text-center">
+                                    <div className="text-xs text-muted-foreground">Avg Latency</div>
                                     <div className="text-lg font-bold text-green-400">12ms</div>
                                   </div>
-                                  <div className="p-3 rounded-lg bg-zinc-800/50 text-center">
-                                    <div className="text-xs text-zinc-500">Requests</div>
+                                  <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50 text-center">
+                                    <div className="text-xs text-muted-foreground">Requests</div>
                                     <div className="text-lg font-bold text-blue-400">1,247</div>
                                   </div>
-                                  <div className="p-3 rounded-lg bg-zinc-800/50 text-center">
-                                    <div className="text-xs text-zinc-500">Uptime</div>
+                                  <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50 text-center">
+                                    <div className="text-xs text-muted-foreground">Uptime</div>
                                     <div className="text-lg font-bold text-purple-400">99.9%</div>
                                   </div>
                                 </div>

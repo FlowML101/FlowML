@@ -73,23 +73,27 @@
   .card-glow-wrapper::before {
     content: '';
     position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 100%;
-    height: 100%;
-    transform: translate(-50%, -50%);
-    background: radial-gradient(ellipse at center, 
-      #a855f7 0%,
-      #FF0097 30%, 
-      #5603BD 60%,
-      transparent 100%
-    );
+    inset: -8px;
     opacity: 0;
     transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
     pointer-events: none;
     z-index: -1;
-    filter: blur(10px);
+    filter: blur(20px);
+    border-radius: 12px;
   }
+  
+  .card-glow-wrapper:has(.card-hover:hover)::before {
+    opacity: 0.5;
+  }
+  
+  /* Match card gradient colors for glow */
+  .card-glow-wrapper:has([class*="from-purple-500"])::before { background: radial-gradient(circle, rgba(168, 85, 247, 0.6) 0%, transparent 70%); }
+  .card-glow-wrapper:has([class*="from-yellow-500"])::before { background: radial-gradient(circle, rgba(234, 179, 8, 0.6) 0%, transparent 70%); }
+  .card-glow-wrapper:has([class*="from-green-500"])::before { background: radial-gradient(circle, rgba(34, 197, 94, 0.6) 0%, transparent 70%); }
+  .card-glow-wrapper:has([class*="from-blue-500"])::before { background: radial-gradient(circle, rgba(59, 130, 246, 0.6) 0%, transparent 70%); }
+  .card-glow-wrapper:has([class*="from-cyan-500"])::before { background: radial-gradient(circle, rgba(6, 182, 212, 0.6) 0%, transparent 70%); }
+  .card-glow-wrapper:has([class*="from-red-500"])::before { background: radial-gradient(circle, rgba(239, 68, 68, 0.6) 0%, transparent 70%); }
+  .card-glow-wrapper:has([class*="from-orange-500"])::before { background: radial-gradient(circle, rgba(249, 115, 22, 0.6) 0%, transparent 70%); }
   
   .card-hover {
     position: relative;
@@ -99,12 +103,6 @@
   
   .card-hover:hover {
     transform: translateY(-4px);
-  }
-  
-  .card-glow-wrapper:has(.card-hover:hover)::before {
-    opacity: 0.6;
-    width: 100%;
-    height: 100%;
   }
 
   /* Page Transitions */

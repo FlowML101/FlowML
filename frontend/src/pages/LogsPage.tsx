@@ -84,17 +84,31 @@ export function LogsPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-          <ScrollText className="w-8 h-8 text-cyan-500" />
-          System Logs
-        </h1>
-        <p className="text-zinc-400">Centralized audit trail for the distributed cluster</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+            <ScrollText className="w-8 h-8 text-cyan-500" />
+            System Logs
+          </h1>
+          <p className="text-muted-foreground">Centralized audit trail and monitoring for distributed cluster operations</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className="text-sm px-4 py-2">
+            {filteredLogs.length} entries
+          </Badge>
+          <Badge className={`text-sm px-4 py-2 ${
+            logs.some(l => l.level === 'error') ? 'bg-red-600' :
+            logs.some(l => l.level === 'warn') ? 'bg-yellow-600' :
+            'bg-green-600'
+          }`}>
+            {logs.filter(l => l.level === 'error').length} errors
+          </Badge>
+        </div>
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardHeader>
+      <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-cyan-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-cyan-500/12">
+        <CardHeader className="relative">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
@@ -106,7 +120,7 @@ export function LogsPage() {
             <Badge variant="outline">{filteredLogs.length} entries</Badge>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="relative">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Search */}
             <div className="space-y-2">
@@ -155,13 +169,13 @@ export function LogsPage() {
       </Card>
 
       {/* Logs Table */}
-      <Card>
-        <CardHeader>
+      <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-purple-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12">
+        <CardHeader className="relative">
           <CardTitle>Log Entries</CardTitle>
           <CardDescription>Real-time distributed system events</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="border border-zinc-800 rounded-lg overflow-hidden">
+        <CardContent className="relative">
+          <div className="border border-border dark:border-zinc-800 rounded-lg overflow-hidden">
             <div className="max-h-[600px] overflow-y-auto">
               <Table>
                 <TableHeader className="sticky top-0 bg-zinc-900 z-10">
@@ -182,7 +196,7 @@ export function LogsPage() {
                   ) : (
                     filteredLogs.map((log) => (
                       <TableRow key={log.id}>
-                        <TableCell className="font-mono text-xs text-zinc-400">
+                        <TableCell className="font-mono text-xs text-muted-foreground">
                           {log.timestamp}
                         </TableCell>
                         <TableCell>

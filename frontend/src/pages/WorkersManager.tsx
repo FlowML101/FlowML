@@ -52,71 +52,85 @@ const mockWorkers = [
 ]
 
 export function WorkersManager() {
+  const onlineWorkers = mockWorkers.filter(w => w.status === 'online').length
+  const totalWorkers = mockWorkers.length
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-          <Server className="w-8 h-8 text-blue-500" />
-          Workers Manager
-        </h1>
-        <p className="text-zinc-400">Manage your distributed compute cluster</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+            <Server className="w-8 h-8 text-blue-500" />
+            Workers Manager
+          </h1>
+          <p className="text-muted-foreground">Manage and monitor your distributed compute cluster resources</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className="text-sm px-4 py-2">
+            {onlineWorkers}/{totalWorkers} online
+          </Badge>
+          <Button size="sm" className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700">
+            <Server className="w-4 h-4 mr-2" />
+            Add Worker
+          </Button>
+        </div>
       </div>
 
       {/* Cluster Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/15">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative">
             <CardTitle className="text-sm font-medium">Total Nodes</CardTitle>
             <Server className="w-4 h-4 text-zinc-400" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative">
             <div className="text-2xl font-bold">4</div>
-            <p className="text-xs text-zinc-500">3 online, 1 offline</p>
+            <p className="text-xs text-muted-foreground">3 online, 1 offline</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/15">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative">
             <CardTitle className="text-sm font-medium">Total VRAM</CardTitle>
             <Activity className="w-4 h-4 text-purple-400" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative">
             <div className="text-2xl font-bold">18 GB</div>
-            <p className="text-xs text-zinc-500">7.1 GB in use</p>
+            <p className="text-xs text-muted-foreground">7.1 GB in use</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-cyan-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-cyan-500/15">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative">
             <CardTitle className="text-sm font-medium">Avg. CPU Load</CardTitle>
             <Activity className="w-4 h-4 text-blue-400" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative">
             <div className="text-2xl font-bold">49%</div>
-            <p className="text-xs text-zinc-500">Across active nodes</p>
+            <p className="text-xs text-muted-foreground">Across active nodes</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-green-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-green-500/15">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative">
             <CardTitle className="text-sm font-medium">Network Latency</CardTitle>
             <Activity className="w-4 h-4 text-green-400" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative">
             <div className="text-2xl font-bold">12ms</div>
-            <p className="text-xs text-zinc-500">Mesh average</p>
+            <p className="text-xs text-muted-foreground">Mesh average</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Workers Table */}
-      <Card>
-        <CardHeader>
+      <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-purple-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12">
+        <CardHeader className="relative">
           <CardTitle>Cluster Nodes</CardTitle>
           <CardDescription>Manage and monitor all workers in your mesh</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="relative">
           <Table>
             <TableHeader>
               <TableRow>
@@ -150,7 +164,7 @@ export function WorkersManager() {
                       {worker.status}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-zinc-400 font-mono text-xs">
+                  <TableCell className="text-muted-foreground font-mono text-xs">
                     {worker.ip}
                   </TableCell>
                   <TableCell>
@@ -168,8 +182,8 @@ export function WorkersManager() {
                       <span className="text-zinc-600">-</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-zinc-400">{worker.cpuUsage}</TableCell>
-                  <TableCell className="text-zinc-400 text-xs">{worker.uptime}</TableCell>
+                  <TableCell className="text-muted-foreground">{worker.cpuUsage}</TableCell>
+                  <TableCell className="text-muted-foreground text-xs">{worker.uptime}</TableCell>
                   <TableCell className="text-right">
                     {worker.status === 'online' && worker.role !== 'Master' && (
                       <div className="flex gap-2 justify-end">

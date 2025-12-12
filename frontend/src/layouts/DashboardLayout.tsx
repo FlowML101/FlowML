@@ -11,35 +11,51 @@ import {
   ChevronRight,
   Settings,
   User,
-  Sun,
-  Moon,
-  Palette,
-  Search
+  Search,
+  GitBranch,
+  BarChart3,
+  Upload,
+  Calendar
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { NotificationCenter } from '@/components/NotificationCenter'
 import { PageTransition } from '@/components/PageTransition'
+import { ConnectionStatus } from '@/components/ConnectionStatus'
+import { useWebSocket } from '@/hooks/useWebSocket'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
 const navigation = [
+  // Overview & Monitoring
   { name: 'Dashboard', href: '/app', icon: LayoutDashboard },
-  { name: 'Data Studio', href: '/app/data', icon: Database },
-  { name: 'Training', href: '/app/train', icon: Zap },
   { name: 'Live Monitor', href: '/app/running', icon: Activity },
-  { name: 'Workers', href: '/app/workers', icon: Server },
+  
+  // Data Pipeline
+  { name: 'Data Studio', href: '/app/data', icon: Database },
+  { name: 'Visualizations', href: '/app/visualizations', icon: BarChart3 },
+  
+  // Training Workflow
+  { name: 'Training', href: '/app/train', icon: Zap },
+  { name: 'Schedule', href: '/app/schedule', icon: Calendar },
+  { name: 'History', href: '/app/history', icon: GitBranch },
+  
+  // Results & Deployment
   { name: 'Results', href: '/app/results', icon: Trophy },
+  { name: 'Compare', href: '/app/compare', icon: BarChart3 },
   { name: 'Model Lab', href: '/app/inference', icon: FlaskConical },
+  { name: 'Deploy', href: '/app/deploy', icon: Upload },
+  
+  // System Management
+  { name: 'Workers', href: '/app/workers', icon: Server },
   { name: 'Logs', href: '/app/logs', icon: ScrollText },
 ]
 
 export function DashboardLayout() {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [showThemeMenu, setShowThemeMenu] = useState(false)
-  const { theme, accentColor, toggleTheme, setAccentColor } = useTheme()
+  const { status: wsStatus } = useWebSocket()
 
   // Generate breadcrumbs
   const pathSegments = location.pathname.split('/').filter(Boolean)
@@ -163,47 +179,11 @@ export function DashboardLayout() {
 
           {/* Right Actions */}
           <div className="flex items-center gap-2">
+            {/* Connection Status */}
+            <ConnectionStatus status={wsStatus} />
+            
             {/* Notification Center */}
             <NotificationCenter />
-
-            {/* Theme Toggle */}
-            <Button onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
-              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </Button>
-
-            {/* Theme Customization */}
-            <div className="relative">
-              <Button onClick={() => setShowThemeMenu(!showThemeMenu)} title="Customize theme">
-                <Palette className="w-5 h-5" />
-              </Button>
-              {showThemeMenu && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowThemeMenu(false)} />
-                  <div className="absolute right-0 top-12 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 p-4">
-                    <h3 className="font-semibold mb-3">Accent Color</h3>
-                    <div className="grid grid-cols-4 gap-2">
-                      {['purple', 'blue', 'green', 'orange'].map((color) => (
-                        <button
-                          key={color}
-                          onClick={() => {
-                            setAccentColor(color as any)
-                            setShowThemeMenu(false)
-                          }}
-                          className={cn(
-                            "h-10 rounded-lg transition-all",
-                            color === 'purple' && 'bg-purple-600',
-                            color === 'blue' && 'bg-blue-600',
-                            color === 'green' && 'bg-green-600',
-                            color === 'orange' && 'bg-orange-600',
-                            accentColor === color && 'ring-2 ring-white ring-offset-2 ring-offset-zinc-900'
-                          )}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
 
             <Button title="Settings">
               <Settings className="w-5 h-5" />

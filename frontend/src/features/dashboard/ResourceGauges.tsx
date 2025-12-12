@@ -15,15 +15,23 @@ function ResourceGauge({ label, used, total, unit, icon: Icon, color }: Resource
   const circumference = 2 * Math.PI * 45
   const strokeDashoffset = circumference - (percentage / 100) * circumference
 
+  const gradientClass = label.includes('VRAM') ? 'before:from-purple-500/10' : 
+                        label.includes('RAM') ? 'before:from-blue-500/10' : 
+                        'before:from-cyan-500/10'
+
+  const shadowClass = label.includes('VRAM') ? 'hover:shadow-blue-500/15' : 
+                      label.includes('RAM') ? 'hover:shadow-blue-500/15' : 
+                      'hover:shadow-cyan-500/15'
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className={`border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br ${gradientClass} before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md ${shadowClass}`}>
+      <CardHeader className="pb-3 relative">
         <CardTitle className="text-base flex items-center gap-2">
           <Icon className={`w-4 h-4 ${color}`} />
           {label}
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="relative">
         <div className="flex items-center justify-center">
           <div className="relative w-32 h-32">
             {/* Background circle */}
@@ -35,7 +43,7 @@ function ResourceGauge({ label, used, total, unit, icon: Icon, color }: Resource
                 stroke="currentColor"
                 strokeWidth="8"
                 fill="none"
-                className="text-zinc-800"
+                className="text-muted dark:text-zinc-800"
               />
               {/* Progress circle */}
               <circle
@@ -54,7 +62,7 @@ function ResourceGauge({ label, used, total, unit, icon: Icon, color }: Resource
             {/* Center text */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <div className="text-2xl font-bold">{percentage.toFixed(0)}%</div>
-              <div className="text-xs text-zinc-500">{used.toFixed(1)}/{total.toFixed(1)} {unit}</div>
+              <div className="text-xs text-muted-foreground">{used.toFixed(1)}/{total.toFixed(1)} {unit}</div>
             </div>
           </div>
         </div>
