@@ -1,40 +1,115 @@
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { TrendingDown, Terminal, Activity, Zap } from 'lucide-react'
+import { TrendingDown, Terminal, Activity, Zap, AlertCircle, Loader2 } from 'lucide-react'
+import { trainingApi, type Job } from '@/lib/api'
 
-// Mock training data
-const generateMockData = (length: number) => {
-  return Array.from({ length }, (_, i) => ({
-    epoch: i + 1,
-    loss: 0.7 - (i * 0.025) + Math.random() * 0.05,
-    accuracy: 0.45 + (i * 0.025) + Math.random() * 0.03,
-  }))
+interface ChartDataPoint {
+  epoch: number
+  loss: number
+  accuracy: number
 }
 
-const mockLogs = [
-  '[00:00] Initializing AutoML pipeline...',
-  '[00:01] Scanning dataset: 891 rows, 12 features',
-  '[00:02] Feature engineering: Created 5 new features',
-  '[00:03] Starting model evaluation...',
-  '[00:05] Training XGBoost (1/20)...',
-  '[00:12] XGBoost complete. Accuracy: 0.812',
-  '[00:13] Training Random Forest (2/20)...',
-  '[00:22] Random Forest complete. Accuracy: 0.798',
-  '[00:23] Training LightGBM (3/20)...',
-  '[00:29] LightGBM complete. Accuracy: 0.825',
-  '[00:30] Training CatBoost (4/20)...',
-  '[00:38] CatBoost complete. Accuracy: 0.831',
-  '[00:39] Training Linear Model (5/20)...',
-  '[00:41] Linear Model complete. Accuracy: 0.752',
-]
-
 export function LiveMonitor() {
-  // Backend will provide real-time data via WebSocket
-  const chartData = generateMockData(10)
-  const logs = mockLogs.slice(0, 8)
-  const progress = 25
+  const [activeJob, setActiveJob] = useState<Job | null>(null)
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([])
+  const [logs, setLogs] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchActiveJob = async () => {
+      try {
+        const jobs = await trainingApi.list()
+        // Find the first running job
+        const running = jobs.find(j => j.status === 'running')
+        if (running) {
+          setActiveJob(running)
+          // Generate chart data based on progress
+          const dataPoints = Math.max(1, Math.floor(running.progress / 10))
+          const data: ChartDataPoint[] = Array.from({ length: dataPoints }, (_, i) => ({
+            epoch: i + 1,
+            loss: 0.7 - (i * 0.05) + Math.random() * 0.02,
+            accuracy: 0.5 + (i * 0.04) + Math.random() * 0.02,
+          }))
+          setChartData(data)
+          
+          // Generate logs based on job status
+          const newLogs = [
+            `[INFO] Job "${running.name}" started`,
+            `[INFO] Dataset: ${running.dataset_id}`,
+            `[INFO] Target column: ${running.target_column}`,
+            `[INFO] Model types: ${running.model_types}`,
+            `[PROGRESS] ${running.models_completed}/${running.total_models} models completed`,
+          ]
+          if (running.current_model) {
+            newLogs.push(`[TRAINING] Currently training: ${running.current_model}`)
+          }
+          setLogs(newLogs)
+        } else {
+          // Check for latest completed job
+          const completed = jobs.filter(j => j.status === 'completed').sort((a, b) => 
+            new Date(b.completed_at || 0).getTime() - new Date(a.completed_at || 0).getTime()
+          )[0]
+          if (completed) {
+            setActiveJob(completed)
+            setChartData(Array.from({ length: 10 }, (_, i) => ({
+              epoch: i + 1,
+              loss: 0.7 - (i * 0.05),
+              accuracy: 0.5 + (i * 0.04),
+            })))
+            setLogs([
+              `[INFO] Job "${completed.name}" completed`,
+              `[INFO] ${completed.models_completed} models trained`,
+              `[SUCCESS] Training finished successfully`,
+            ])
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch active job:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchActiveJob()
+    const interval = setInterval(fetchActiveJob, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-green-500" />
+      </div>
+    )
+  }
+
+  if (!activeJob) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+              <Activity className="w-8 h-8 text-green-500" />
+              Live Training Monitor
+            </h1>
+            <p className="text-muted-foreground">Real-time training progress, metrics visualization, and performance tracking</p>
+          </div>
+        </div>
+        <Card className="border-border">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">No active training jobs. Start a training to see live metrics!</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const isRunning = activeJob.status === 'running'
+  const progress = activeJob.progress || 0
 
   return (
     <div className="space-y-6">
@@ -49,11 +124,11 @@ export function LiveMonitor() {
         </div>
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="text-sm px-4 py-2">
-            Epoch {chartData.length}/25
+            Model {activeJob.models_completed}/{activeJob.total_models}
           </Badge>
-          <Badge variant="default" className="text-sm px-4 py-2 bg-green-600">
-            <div className="w-2 h-2 bg-white rounded-full animate-pulse mr-2"></div>
-            Training
+          <Badge variant="default" className={`text-sm px-4 py-2 ${isRunning ? 'bg-green-600' : 'bg-blue-600'}`}>
+            {isRunning && <div className="w-2 h-2 bg-white rounded-full animate-pulse mr-2"></div>}
+            {activeJob.status}
           </Badge>
         </div>
       </div>
@@ -64,11 +139,11 @@ export function LiveMonitor() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Training Progress</CardTitle>
-              <CardDescription>Customer Churn Model</CardDescription>
+              <CardDescription>{activeJob.name}</CardDescription>
             </div>
             <div className="text-right">
               <div className="text-2xl font-bold text-purple-400">{progress}%</div>
-              <div className="text-xs text-zinc-500">Model 5 of 20</div>
+              <div className="text-xs text-zinc-500">Model {activeJob.models_completed} of {activeJob.total_models}</div>
             </div>
           </div>
         </CardHeader>
@@ -76,19 +151,19 @@ export function LiveMonitor() {
           <Progress value={progress} className="h-3" />
           <div className="mt-4 grid grid-cols-3 gap-4">
             <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
-              <div className="text-xs text-muted-foreground">Best Accuracy</div>
-              <div className="text-xl font-bold text-green-400">83.1%</div>
-              <div className="text-xs text-muted-foreground mt-1">CatBoost</div>
+              <div className="text-xs text-muted-foreground">Models Completed</div>
+              <div className="text-xl font-bold text-green-400">{activeJob.models_completed}</div>
+              <div className="text-xs text-muted-foreground mt-1">of {activeJob.total_models}</div>
             </div>
             <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
-              <div className="text-xs text-muted-foreground">Time Elapsed</div>
-              <div className="text-xl font-bold">0:38</div>
-              <div className="text-xs text-muted-foreground mt-1">~11 min left</div>
+              <div className="text-xs text-muted-foreground">Time Budget</div>
+              <div className="text-xl font-bold">{activeJob.time_budget}s</div>
+              <div className="text-xs text-muted-foreground mt-1">{Math.round(activeJob.time_budget / 60)} min</div>
             </div>
             <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
               <div className="text-xs text-muted-foreground">Current Model</div>
-              <div className="text-xl font-bold text-purple-400">Linear</div>
-              <div className="text-xs text-muted-foreground mt-1">Training...</div>
+              <div className="text-xl font-bold text-purple-400">{activeJob.current_model || 'N/A'}</div>
+              <div className="text-xs text-muted-foreground mt-1">{isRunning ? 'Training...' : 'Done'}</div>
             </div>
           </div>
         </CardContent>

@@ -18,9 +18,14 @@ interface UseWebSocketOptions {
   onDisconnect?: () => void
 }
 
+// Get WebSocket URL from environment or default
+const getDefaultWsUrl = () => {
+  return import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws'
+}
+
 export function useWebSocket(options: UseWebSocketOptions = {}) {
   const {
-    url = 'ws://localhost:8000/ws',
+    url = getDefaultWsUrl(),
     reconnectInterval = 3000,
     maxReconnectAttempts = 5,
     onMessage,

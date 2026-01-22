@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Node
+node_modules/
+.npm/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+*.local
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker data volumes (never commit these!)
+deploy/data/
+
+# Trained models and uploads (user data)
+trained_models/
+uploads/
+backend/trained_models/
+backend/uploads/
+
+# MinIO data
+minio/
+
+# Test outputs
+.pytest_cache/
+.coverage
+htmlcov/

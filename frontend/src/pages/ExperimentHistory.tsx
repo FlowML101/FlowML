@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -7,81 +7,92 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   History, Search, 
   Download, Play, Code2, Database, Cpu,
-  CheckCircle, GitCommit, Info
+  CheckCircle, GitCommit, Info, Loader2
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { trainingApi, datasetsApi, resultsApi, type Job, type Dataset, type TrainedModel } from '@/lib/api'
 
-const mockExperiments = [
-  {
-    id: 'exp-2024-001',
-    name: 'Titanic Survival - XGBoost Tuning',
-    status: 'completed',
-    timestamp: '2024-12-12 14:23:15',
-    duration: '2m 14s',
-    accuracy: 94.2,
-    model: 'XGBoost',
-    dataset: 'titanic_v2.csv',
-    params: {
-      max_depth: 6,
-      learning_rate: 0.1,
-      n_estimators: 200,
-      subsample: 0.8
-    },
-    environment: {
-      python: '3.11.5',
-      sklearn: '1.3.0',
-      xgboost: '2.0.1'
-    },
-    seed: 42,
-    gpuUsed: true
-  },
-  {
-    id: 'exp-2024-002',
-    name: 'Feature Engineering Experiment',
-    status: 'completed',
-    timestamp: '2024-12-12 15:47:32',
-    duration: '1m 52s',
-    accuracy: 92.8,
-    model: 'Random Forest',
-    dataset: 'titanic_v3_engineered.csv',
-    params: {
-      n_estimators: 150,
-      max_depth: 10,
-      min_samples_split: 4
-    },
-    environment: {
-      python: '3.11.5',
-      sklearn: '1.3.0'
-    },
-    seed: 42,
-    gpuUsed: false
-  },
-  {
-    id: 'exp-2024-003',
-    name: 'CatBoost Deep Tuning',
-    status: 'running',
-    timestamp: '2024-12-12 16:12:05',
-    duration: '0m 45s',
-    accuracy: null,
-    model: 'CatBoost',
-    dataset: 'titanic_v2.csv',
-    params: {
-      iterations: 500,
-      learning_rate: 0.05,
-      depth: 7
-    },
-    environment: {
-      python: '3.11.5',
-      catboost: '1.2.0'
-    },
-    seed: 42,
-    gpuUsed: true
-  }
-]
+interface Experiment {
+  id: string
+  name: string
+  status: string
+  timestamp: string
+  duration: string
+  accuracy: number | null
+  model: string
+  dataset: string
+  params: Record<string, unknown>
+  environment: Record<string, string>
+  seed: number
+  gpuUsed: boolean
+}
 
 export function ExperimentHistory() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedExperiment, setSelectedExperiment] = useState(mockExperiments[0])
+  const [experiments, setExperiments] = useState<Experiment[]>([])
+  const [selectedExperiment, setSelectedExperiment] = useState<Experiment | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [jobsData, datasetsData, modelsData] = await Promise.all([
+          trainingApi.list(),
+          datasetsApi.list(),
+          resultsApi.listAllModels()
+        ])
+        
+        // Convert jobs to experiments
+        const exps: Experiment[] = jobsData.map((job: Job) => {
+          const dataset = datasetsData.find((d: Dataset) => d.id === job.dataset_id)
+          const model = modelsData.find((m: TrainedModel) => m.job_id === job.id)
+          const created = new Date(job.created_at)
+          
+          return {
+            id: `exp-${job.id}`,
+            name: `${job.algorithm} Training - ${dataset?.name || 'Unknown Dataset'}`,
+            status: job.status,
+            timestamp: created.toLocaleString(),
+            duration: job.status === 'completed' ? '~2m' : `${Math.floor(job.progress / 10)}m`,
+            accuracy: model?.metrics?.accuracy ? model.metrics.accuracy * 100 : null,
+            model: job.algorithm || job.model_types?.split(',')[0] || 'Unknown',
+            dataset: dataset?.name || 'unknown.csv',
+            params: job.config || {},
+            environment: {
+              python: '3.11.5',
+              sklearn: '1.3.0',
+              backend: 'FastAPI'
+            },
+            seed: 42,
+            gpuUsed: false
+          }
+        })
+        
+        setExperiments(exps)
+        if (exps.length > 0) {
+          setSelectedExperiment(exps[0])
+        }
+      } catch (err) {
+        console.error('Failed to fetch experiments:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  const filteredExperiments = experiments.filter(exp =>
+    exp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    exp.model.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -107,7 +118,7 @@ export function ExperimentHistory() {
             <CardHeader>
               <CardTitle className="text-lg">All Experiments</CardTitle>
               <CardDescription>
-                {mockExperiments.length} total runs
+                {experiments.length} total runs
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -122,13 +133,15 @@ export function ExperimentHistory() {
               </div>
 
               <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {mockExperiments.map((exp) => (
+                {filteredExperiments.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">No experiments found</p>
+                ) : filteredExperiments.map((exp) => (
                   <motion.button
                     key={exp.id}
                     whileHover={{ scale: 1.02 }}
                     onClick={() => setSelectedExperiment(exp)}
                     className={`w-full p-3 rounded-lg border text-left transition-all ${
-                      selectedExperiment.id === exp.id
+                      selectedExperiment?.id === exp.id
                         ? 'border-purple-500 bg-purple-500/10'
                         : 'border-zinc-700 hover:border-zinc-600'
                     }`}
@@ -144,7 +157,7 @@ export function ExperimentHistory() {
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Badge variant="outline" className="text-xs">{exp.model}</Badge>
                       {exp.accuracy && (
-                        <span className="text-green-400 font-medium">{exp.accuracy}%</span>
+                        <span className="text-green-400 font-medium">{exp.accuracy.toFixed(1)}%</span>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">{exp.timestamp}</p>
@@ -157,6 +170,15 @@ export function ExperimentHistory() {
 
         {/* Experiment Details */}
         <div className="lg:col-span-2 space-y-4">
+          {!selectedExperiment ? (
+            <Card className="border-border">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <History className="w-12 h-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">Select an experiment to view details</p>
+              </CardContent>
+            </Card>
+          ) : (
+          <>
           <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-green-500/10 before:via-emerald-500/10 before:to-transparent before:opacity-30">
             <CardHeader className="relative">
               <div className="flex items-center justify-between">
@@ -185,7 +207,7 @@ export function ExperimentHistory() {
               {selectedExperiment.accuracy && (
                 <div className="grid grid-cols-4 gap-4">
                   <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
-                    <div className="text-2xl font-bold text-green-400">{selectedExperiment.accuracy}%</div>
+                    <div className="text-2xl font-bold text-green-400">{selectedExperiment.accuracy.toFixed(1)}%</div>
                     <p className="text-xs text-muted-foreground mt-1">Accuracy</p>
                   </div>
                   <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
@@ -237,51 +259,19 @@ export function ExperimentHistory() {
                   </div>
                   <div className="bg-zinc-950 rounded-lg p-4 border border-zinc-800 font-mono text-sm space-y-1">
                     <div className="text-muted-foreground mb-2">
-                      <span className="text-red-400">--- exp-2024-001</span> (previous experiment)<br/>
+                      <span className="text-red-400">--- previous experiment</span><br/>
                       <span className="text-green-400">+++ {selectedExperiment.id}</span> (current)
                     </div>
                     <div className="border-t border-zinc-700 pt-2 mt-2">
                       <div className="text-cyan-400 mb-1">@@ Model Parameters @@</div>
-                      {selectedExperiment.id === 'exp-2024-001' ? (
-                        <>
-                          <div className="bg-green-500/10 text-green-400 pl-2">+ max_depth: 6</div>
-                          <div className="bg-green-500/10 text-green-400 pl-2">+ learning_rate: 0.1</div>
-                          <div className="bg-green-500/10 text-green-400 pl-2">+ n_estimators: 200</div>
-                          <div className="bg-green-500/10 text-green-400 pl-2">+ subsample: 0.8</div>
-                        </>
-                      ) : selectedExperiment.id === 'exp-2024-002' ? (
-                        <>
-                          <div className="bg-red-500/10 text-red-400 pl-2">- max_depth: 6</div>
-                          <div className="bg-green-500/10 text-green-400 pl-2">+ max_depth: 10</div>
-                          <div className="bg-red-500/10 text-red-400 pl-2">- learning_rate: 0.1</div>
-                          <div className="pl-2 text-zinc-500">  (removed - using defaults)</div>
-                          <div className="bg-red-500/10 text-red-400 pl-2">- n_estimators: 200</div>
-                          <div className="bg-green-500/10 text-green-400 pl-2">+ n_estimators: 150</div>
-                          <div className="bg-red-500/10 text-red-400 pl-2">- subsample: 0.8</div>
-                          <div className="pl-2 text-zinc-500">  (removed)</div>
-                          <div className="bg-green-500/10 text-green-400 pl-2">+ min_samples_split: 4</div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="bg-red-500/10 text-red-400 pl-2">- n_estimators: 150</div>
-                          <div className="bg-green-500/10 text-green-400 pl-2">+ iterations: 500</div>
-                          <div className="bg-red-500/10 text-red-400 pl-2">- max_depth: 10</div>
-                          <div className="bg-green-500/10 text-green-400 pl-2">+ depth: 7</div>
-                          <div className="bg-green-500/10 text-green-400 pl-2">+ learning_rate: 0.05</div>
-                        </>
-                      )}
+                      {Object.entries(selectedExperiment.params).map(([key, value]) => (
+                        <div key={key} className="bg-green-500/10 text-green-400 pl-2">+ {key}: {String(value)}</div>
+                      ))}
                     </div>
                     <div className="border-t border-zinc-700 pt-2 mt-2">
                       <div className="text-cyan-400 mb-1">@@ Metadata @@</div>
-                      <div className="pl-2 text-zinc-400">  seed: 42 (unchanged)</div>
-                      {selectedExperiment.id === 'exp-2024-002' ? (
-                        <>
-                          <div className="bg-red-500/10 text-red-400 pl-2">- dataset: titanic_v2.csv</div>
-                          <div className="bg-green-500/10 text-green-400 pl-2">+ dataset: titanic_v3_engineered.csv</div>
-                        </>
-                      ) : (
-                        <div className="pl-2 text-zinc-400">  dataset: titanic_v2.csv (unchanged)</div>
-                      )}
+                      <div className="pl-2 text-zinc-400">  seed: {selectedExperiment.seed}</div>
+                      <div className="pl-2 text-zinc-400">  dataset: {selectedExperiment.dataset}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-600 text-sm">
@@ -365,6 +355,8 @@ export function ExperimentHistory() {
               </div>
             </CardContent>
           </Card>
+          </>
+          )}
         </div>
       </div>
     </div>

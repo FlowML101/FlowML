@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -7,30 +7,59 @@ import {
   Loader2, Circle, PlayCircle
 } from 'lucide-react'
 import { motion } from 'framer-motion'
-
-const mockJobs = [
-  { id: 1, name: 'XGBoost Training', status: 'completed', start: '08:00', end: '09:30', worker: 'worker-1', date: '2024-12-12' },
-  { id: 2, name: 'Data Preprocessing', status: 'completed', start: '09:45', end: '10:15', worker: 'worker-2', date: '2024-12-12' },
-  { id: 3, name: 'CatBoost Tuning', status: 'running', start: '10:30', end: null, worker: 'worker-1', date: '2024-12-12' },
-  { id: 4, name: 'RF Training', status: 'pending', start: '11:00', end: null, worker: 'worker-3', date: '2024-12-12' },
-  { id: 5, name: 'Model Evaluation', status: 'pending', start: '12:00', end: null, worker: 'worker-2', date: '2024-12-12' }
-]
-
-const workers = [
-  { id: 'worker-1', name: 'GPU Worker 1', type: 'gpu', status: 'busy', utilization: 87 },
-  { id: 'worker-2', name: 'CPU Worker 1', type: 'cpu', status: 'idle', utilization: 12 },
-  { id: 'worker-3', name: 'GPU Worker 2', type: 'gpu', status: 'idle', utilization: 0 }
-]
+import { trainingApi, workersApi, type Job, type Worker } from '@/lib/api'
 
 const timeSlots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
 
 export function ResourceScheduler() {
-  const [selectedDate, setSelectedDate] = useState('2024-12-12')
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
   const [queueFilter, setQueueFilter] = useState<'all' | 'pending' | 'running' | 'completed'>('all')
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [workers, setWorkers] = useState<Worker[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [jobsData, workersData] = await Promise.all([
+          trainingApi.list(),
+          workersApi.list()
+        ])
+        setJobs(jobsData)
+        setWorkers(workersData)
+      } catch (err) {
+        console.error('Failed to fetch data:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+    const interval = setInterval(fetchData, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   const filteredJobs = queueFilter === 'all' 
-    ? mockJobs 
-    : mockJobs.filter(job => job.status === queueFilter)
+    ? jobs 
+    : jobs.filter(job => job.status === queueFilter)
+
+  const getJobTime = (job: Job): { start: string; end: string | null } => {
+    const created = new Date(job.created_at)
+    const start = `${created.getHours().toString().padStart(2, '0')}:${created.getMinutes().toString().padStart(2, '0')}`
+    let end = null
+    if (job.status === 'completed' && job.progress === 100) {
+      const endDate = new Date(created.getTime() + 30 * 60000)
+      end = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`
+    }
+    return { start, end }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -51,16 +80,24 @@ export function ResourceScheduler() {
 
       {/* Worker Status Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {workers.map((worker) => (
+        {workers.length === 0 ? (
+          <Card className="md:col-span-3 border-border">
+            <CardContent className="flex flex-col items-center justify-center py-8">
+              <Server className="w-12 h-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No workers registered</p>
+            </CardContent>
+          </Card>
+        ) : workers.map((worker) => (
           <Card 
             key={worker.id}
             className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-transparent before:to-cyan-500/10 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12"
           >
             <CardHeader className="relative pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">{worker.name}</CardTitle>
+                <CardTitle className="text-base">{worker.id}</CardTitle>
                 <Badge className={
-                  worker.status === 'busy' ? 'bg-yellow-600' : 'bg-green-600'
+                  worker.status === 'busy' ? 'bg-yellow-600' : 
+                  worker.status === 'online' ? 'bg-green-600' : 'bg-red-600'
                 }>
                   {worker.status}
                 </Badge>
@@ -68,24 +105,13 @@ export function ResourceScheduler() {
             </CardHeader>
             <CardContent className="relative">
               <div className="flex items-center gap-3 mb-3">
-                <Server className={`w-5 h-5 ${worker.type === 'gpu' ? 'text-purple-400' : 'text-blue-400'}`} />
-                <span className="text-sm text-muted-foreground">{worker.type.toUpperCase()}</span>
+                <Server className={`w-5 h-5 ${worker.capabilities?.gpu ? 'text-purple-400' : 'text-blue-400'}`} />
+                <span className="text-sm text-muted-foreground">{worker.capabilities?.gpu ? 'GPU' : 'CPU'}</span>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Utilization</span>
-                  <span className="font-medium">{worker.utilization}%</span>
-                </div>
-                <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${worker.utilization}%` }}
-                    className={`h-full rounded-full ${
-                      worker.utilization > 80 ? 'bg-red-500' :
-                      worker.utilization > 50 ? 'bg-yellow-500' :
-                      'bg-green-500'
-                    }`}
-                  />
+                  <span className="text-muted-foreground">Tasks</span>
+                  <span className="font-medium">{worker.current_task || 'Idle'}</span>
                 </div>
               </div>
             </CardContent>
@@ -116,10 +142,12 @@ export function ResourceScheduler() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {workers.map((worker) => (
+                {workers.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">No workers to display</p>
+                ) : workers.map((worker) => (
                   <div key={worker.id} className="space-y-2">
                     <div className="flex items-center gap-3">
-                      <div className="w-32 text-sm font-medium">{worker.name}</div>
+                      <div className="w-32 text-sm font-medium">{worker.id}</div>
                       <div className="flex-1 relative h-12 bg-zinc-800/50 rounded-lg border border-zinc-700">
                         {/* Time markers */}
                         <div className="absolute inset-0 flex">
@@ -134,17 +162,18 @@ export function ResourceScheduler() {
                         </div>
 
                         {/* Jobs on this worker */}
-                        {mockJobs
-                          .filter(job => job.worker === worker.id)
+                        {jobs
+                          .filter(job => job.worker_id === worker.id)
                           .map((job) => {
-                            const startHour = parseInt(job.start.split(':')[0])
-                            const startMin = parseInt(job.start.split(':')[1])
-                            const left = ((startHour - 8) * 60 + startMin) / (10 * 60) * 100
+                            const { start, end } = getJobTime(job)
+                            const startHour = parseInt(start.split(':')[0])
+                            const startMin = parseInt(start.split(':')[1])
+                            const left = Math.max(0, ((startHour - 8) * 60 + startMin) / (10 * 60) * 100)
                             
                             let width = 15
-                            if (job.end) {
-                              const endHour = parseInt(job.end.split(':')[0])
-                              const endMin = parseInt(job.end.split(':')[1])
+                            if (end) {
+                              const endHour = parseInt(end.split(':')[0])
+                              const endMin = parseInt(end.split(':')[1])
                               const duration = (endHour * 60 + endMin) - (startHour * 60 + startMin)
                               width = (duration / (10 * 60)) * 100
                             }
@@ -159,9 +188,9 @@ export function ResourceScheduler() {
                                   job.status === 'running' ? 'bg-yellow-600' :
                                   'bg-zinc-600'
                                 }`}
-                                style={{ left: `${left}%`, width: `${width}%` }}
+                                style={{ left: `${Math.min(left, 85)}%`, width: `${Math.min(width, 100 - left)}%` }}
                               >
-                                {width > 12 && <span className="truncate">{job.name}</span>}
+                                {width > 12 && <span className="truncate">{job.name || job.algorithm}</span>}
                               </motion.div>
                             )
                           })}
@@ -189,7 +218,7 @@ export function ResourceScheduler() {
           <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50">
             <CardHeader>
               <CardTitle className="text-lg">Job Queue</CardTitle>
-              <CardDescription>{mockJobs.length} total jobs</CardDescription>
+              <CardDescription>{jobs.length} total jobs</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {/* Filter buttons */}
@@ -222,31 +251,36 @@ export function ResourceScheduler() {
 
               {/* Job List */}
               <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                {filteredJobs.map((job) => (
-                  <motion.div
-                    key={job.id}
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-3 rounded-lg border border-zinc-700 bg-zinc-800/30"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">{job.name}</span>
-                      {job.status === 'completed' && <CheckCircle className="w-4 h-4 text-green-500" />}
-                      {job.status === 'running' && <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />}
-                      {job.status === 'pending' && <Circle className="w-4 h-4 text-zinc-500" />}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Clock className="w-3 h-3" />
-                      <span>{job.start}</span>
-                      {job.end && <span>→ {job.end}</span>}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                      <Server className="w-3 h-3" />
-                      <span>{job.worker}</span>
-                    </div>
-                  </motion.div>
-                ))}
+                {filteredJobs.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">No jobs in queue</p>
+                ) : filteredJobs.map((job) => {
+                  const { start, end } = getJobTime(job)
+                  return (
+                    <motion.div
+                      key={job.id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-3 rounded-lg border border-zinc-700 bg-zinc-800/30"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">{job.name || job.algorithm}</span>
+                        {job.status === 'completed' && <CheckCircle className="w-4 h-4 text-green-500" />}
+                        {job.status === 'running' && <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />}
+                        {job.status === 'pending' && <Circle className="w-4 h-4 text-zinc-500" />}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Clock className="w-3 h-3" />
+                        <span>{start}</span>
+                        {end && <span>→ {end}</span>}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                        <Server className="w-3 h-3" />
+                        <span>{job.worker_id || 'Unassigned'}</span>
+                      </div>
+                    </motion.div>
+                  )
+                })}
               </div>
             </CardContent>
           </Card>
@@ -266,9 +300,11 @@ export function ResourceScheduler() {
         </CardHeader>
         <CardContent className="relative">
           <div className="space-y-3">
-            {workers.map((worker) => (
+            {workers.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">No workers to display</p>
+            ) : workers.map((worker) => (
               <div key={worker.id} className="space-y-2">
-                <div className="text-sm font-medium">{worker.name}</div>
+                <div className="text-sm font-medium">{worker.id}</div>
                 <div className="flex gap-1">
                   {Array.from({ length: 24 }).map((_, idx) => {
                     const utilization = Math.random() * 100

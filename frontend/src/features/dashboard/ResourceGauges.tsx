@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Cpu, HardDrive, Activity } from 'lucide-react'
+import { Cpu, HardDrive, Activity, Loader2 } from 'lucide-react'
+import { statsApi, ResourceStats } from '@/lib/api'
 
 interface ResourceGaugeProps {
   label: string
@@ -11,7 +13,7 @@ interface ResourceGaugeProps {
 }
 
 function ResourceGauge({ label, used, total, unit, icon: Icon, color }: ResourceGaugeProps) {
-  const percentage = (used / total) * 100
+  const percentage = total > 0 ? (used / total) * 100 : 0
   const circumference = 2 * Math.PI * 45
   const strokeDashoffset = circumference - (percentage / 100) * circumference
 
@@ -19,7 +21,7 @@ function ResourceGauge({ label, used, total, unit, icon: Icon, color }: Resource
                         label.includes('RAM') ? 'before:from-blue-500/10' : 
                         'before:from-cyan-500/10'
 
-  const shadowClass = label.includes('VRAM') ? 'hover:shadow-blue-500/15' : 
+  const shadowClass = label.includes('VRAM') ? 'hover:shadow-purple-500/15' : 
                       label.includes('RAM') ? 'hover:shadow-blue-500/15' : 
                       'hover:shadow-cyan-500/15'
 
@@ -72,27 +74,78 @@ function ResourceGauge({ label, used, total, unit, icon: Icon, color }: Resource
 }
 
 export function ResourceGauges() {
+  const [resources, setResources] = useState<ResourceStats | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchResources = async () => {
+      try {
+        const data = await statsApi.getResources()
+        setResources(data)
+      } catch (err) {
+        console.error('Failed to fetch resources:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchResources()
+    // Refresh every 5 seconds
+    const interval = setInterval(fetchResources, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <Card key={i} className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50">
+            <CardContent className="flex items-center justify-center h-48">
+              <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <ResourceGauge
-        label="VRAM Usage"
-        used={3.2}
-        total={4.0}
-        unit="GB"
-        icon={Cpu}
-        color="text-purple-500"
-      />
+      {resources?.vram_total_gb ? (
+        <ResourceGauge
+          label="VRAM Usage"
+          used={resources.vram_used_gb || 0}
+          total={resources.vram_total_gb}
+          unit="GB"
+          icon={Cpu}
+          color="text-purple-500"
+        />
+      ) : (
+        <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-purple-500/10 before:to-transparent before:opacity-30">
+          <CardHeader className="pb-3 relative">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-purple-500" />
+              VRAM Usage
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="relative flex items-center justify-center h-32">
+            <div className="text-center text-zinc-500">
+              <div className="text-sm">No GPU detected</div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <ResourceGauge
         label="RAM Usage"
-        used={12.8}
-        total={16.0}
+        used={resources?.ram_used_gb || 0}
+        total={resources?.ram_total_gb || 16}
         unit="GB"
         icon={HardDrive}
         color="text-blue-500"
       />
       <ResourceGauge
         label="CPU Load"
-        used={45}
+        used={resources?.cpu_percent || 0}
         total={100}
         unit="%"
         icon={Activity}

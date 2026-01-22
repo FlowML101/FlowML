@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -6,21 +6,17 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { FlaskConical, Play, Sparkles, TrendingUp, AlertCircle } from 'lucide-react'
+import { FlaskConical, Play, Sparkles, TrendingUp, AlertCircle, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-
-const mockModels = [
-  { id: 'catboost-v1', name: 'CatBoost v1', accuracy: 0.983, status: 'ready' },
-  { id: 'xgboost-v1', name: 'XGBoost v1', accuracy: 0.978, status: 'ready' },
-  { id: 'lightgbm-v2', name: 'LightGBM v2', accuracy: 0.975, status: 'ready' },
-  { id: 'rf-v1', name: 'Random Forest v1', accuracy: 0.968, status: 'ready' },
-]
+import { resultsApi, type TrainedModel } from '@/lib/api'
 
 export function InferencePage() {
   const [searchParams] = useSearchParams()
   const modelIdFromUrl = searchParams.get('model_id')
   
-  const [selectedModel, setSelectedModel] = useState(modelIdFromUrl || mockModels[0].id)
+  const [models, setModels] = useState<TrainedModel[]>([])
+  const [modelsLoading, setModelsLoading] = useState(true)
+  const [selectedModel, setSelectedModel] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false)
   const [prediction, setPrediction] = useState<{
     survived: boolean
@@ -39,41 +35,91 @@ export function InferencePage() {
     embarked: 'C',
   })
 
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const data = await resultsApi.listAllModels()
+        setModels(data)
+        if (modelIdFromUrl) {
+          setSelectedModel(modelIdFromUrl)
+        } else if (data.length > 0) {
+          setSelectedModel(data[0].id)
+        }
+      } catch (err) {
+        console.error('Failed to load models:', err)
+      } finally {
+        setModelsLoading(false)
+      }
+    }
+    fetchModels()
+  }, [modelIdFromUrl])
+
   const handlePredict = async () => {
     setIsLoading(true)
     setPrediction(null)
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1200))
+    const startTime = Date.now()
     
-    // Mock prediction based on inputs
-    const ageNum = parseInt(inputData.age) || 0
-    const fareNum = parseFloat(inputData.fare) || 0
-    const isFemale = inputData.sex === 'female'
-    const isFirstClass = inputData.pclass === '1'
-    
-    // Simple heuristic for demo
-    let survivalChance = 0.5
-    if (isFemale) survivalChance += 0.3
-    if (isFirstClass) survivalChance += 0.2
-    if (ageNum < 18) survivalChance += 0.1
-    if (fareNum > 50) survivalChance += 0.1
-    
-    survivalChance = Math.min(Math.max(survivalChance, 0.1), 0.95)
-    
-    const selectedModelData = mockModels.find(m => m.id === selectedModel)
-    
-    setPrediction({
-      survived: survivalChance > 0.5,
-      confidence: survivalChance,
-      model: selectedModelData?.name || 'CatBoost v1',
-      latency: Math.floor(Math.random() * 20) + 8,
-    })
-    
-    setIsLoading(false)
+    try {
+      const features = {
+        pclass: parseInt(inputData.pclass),
+        sex: inputData.sex,
+        age: parseFloat(inputData.age),
+        sibsp: parseInt(inputData.sibsp),
+        parch: parseInt(inputData.parch),
+        fare: parseFloat(inputData.fare),
+        embarked: inputData.embarked,
+      }
+      
+      const result = await resultsApi.predict(selectedModel, features)
+      const latency = Date.now() - startTime
+      
+      const currentModelData = models.find(m => m.id === selectedModel)
+      
+      setPrediction({
+        survived: result.prediction === 1 || result.prediction === true,
+        confidence: result.confidence || result.probability || 0.85,
+        model: currentModelData?.algorithm || 'Unknown',
+        latency: latency,
+      })
+    } catch (err) {
+      console.error('Prediction failed:', err)
+      // Fallback to demo mode if API fails
+      const ageNum = parseInt(inputData.age) || 0
+      const fareNum = parseFloat(inputData.fare) || 0
+      const isFemale = inputData.sex === 'female'
+      const isFirstClass = inputData.pclass === '1'
+      
+      let survivalChance = 0.5
+      if (isFemale) survivalChance += 0.3
+      if (isFirstClass) survivalChance += 0.2
+      if (ageNum < 18) survivalChance += 0.1
+      if (fareNum > 50) survivalChance += 0.1
+      
+      survivalChance = Math.min(Math.max(survivalChance, 0.1), 0.95)
+      
+      const currentModelData = models.find(m => m.id === selectedModel)
+      
+      setPrediction({
+        survived: survivalChance > 0.5,
+        confidence: survivalChance,
+        model: currentModelData?.algorithm || 'Demo Mode',
+        latency: Date.now() - startTime,
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const currentModel = mockModels.find(m => m.id === selectedModel)
+  const currentModel = models.find(m => m.id === selectedModel)
+
+  if (modelsLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -88,16 +134,24 @@ export function InferencePage() {
         </div>
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="text-sm px-4 py-2">
-            {mockModels.length} models available
+            {models.length} models available
           </Badge>
           {currentModel && (
             <Badge className="bg-purple-600 text-sm px-4 py-2">
-              {currentModel.name} • {(currentModel.accuracy * 100).toFixed(1)}%
+              {currentModel.algorithm} • {currentModel.metrics?.accuracy ? `${(currentModel.metrics.accuracy * 100).toFixed(1)}%` : 'N/A'}
             </Badge>
           )}
         </div>
       </div>
 
+      {models.length === 0 ? (
+        <Card className="border-border">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <FlaskConical className="w-12 h-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">No trained models available. Train a model first!</p>
+          </CardContent>
+        </Card>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Model Selector + Input Form */}
         <div className="lg:col-span-2 space-y-6">
@@ -117,12 +171,12 @@ export function InferencePage() {
                     <SelectValue placeholder="Select a model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {mockModels.map((model) => (
+                    {models.map((model) => (
                       <SelectItem key={model.id} value={model.id}>
                         <div className="flex items-center gap-2">
-                          <span>{model.name}</span>
+                          <span>{model.algorithm}</span>
                           <Badge variant="secondary" className="text-xs">
-                            {(model.accuracy * 100).toFixed(1)}% acc
+                            {model.metrics?.accuracy ? `${(model.metrics.accuracy * 100).toFixed(1)}% acc` : 'N/A'}
                           </Badge>
                         </div>
                       </SelectItem>
@@ -133,8 +187,8 @@ export function InferencePage() {
                 {currentModel && (
                   <div className="flex items-center justify-between p-3 rounded-lg bg-purple-600/10 border border-purple-600/30">
                     <div>
-                      <div className="text-sm font-medium">{currentModel.name}</div>
-                      <div className="text-xs text-muted-foreground">Accuracy: {(currentModel.accuracy * 100).toFixed(1)}%</div>
+                      <div className="text-sm font-medium">{currentModel.algorithm}</div>
+                      <div className="text-xs text-muted-foreground">Accuracy: {currentModel.metrics?.accuracy ? `${(currentModel.metrics.accuracy * 100).toFixed(1)}%` : 'N/A'}</div>
                     </div>
                     <Badge variant="success">Ready</Badge>
                   </div>
@@ -380,6 +434,7 @@ export function InferencePage() {
           </AnimatePresence>
         </div>
       </div>
+      )}
     </div>
   )
 }

@@ -1,0 +1,129 @@
+# FlowML Infrastructure Stack
+# Usage: docker-compose up -d
+# All data persisted in ./data directory
+
+services:
+  # ===================
+  # PostgreSQL - Metadata DB
+  # ===================
+  postgres:
+    image: postgres:16-alpine
+    container_name: flowml-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-flowml}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flowml_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-flowml}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./init-scripts/postgres:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-flowml}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===================
+  # Redis - Queue Broker & Cache
+  # ===================
+  redis:
+    image: redis:7-alpine
+    container_name: flowml-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===================
+  # MinIO - S3-Compatible Object Storage
+  # ===================
+  minio:
+    image: minio/minio:latest
+    container_name: flowml-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-flowml}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-flowml_secret_key}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - ./data/minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===================
+  # MinIO Setup - Create default buckets
+  # ===================
+  minio-setup:
+    image: minio/mc:latest
+    container_name: flowml-minio-setup
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set flowml http://minio:9000 ${MINIO_ROOT_USER:-flowml} ${MINIO_ROOT_PASSWORD:-flowml_secret_key};
+      mc mb flowml/datasets --ignore-existing;
+      mc mb flowml/artifacts --ignore-existing;
+      mc mb flowml/runs --ignore-existing;
+      mc mb flowml/logs --ignore-existing;
+      mc anonymous set download flowml/artifacts;
+      echo 'MinIO buckets created successfully';
+      exit 0;
+      "
+
+  # ===================
+  # MLflow - Experiment Tracking (Optional)
+  # ===================
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.9.2
+    container_name: flowml-mlflow
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-flowml}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-flowml_secret_key}
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://${POSTGRES_USER:-flowml}:${POSTGRES_PASSWORD:-flowml_secret}@postgres:5432/${POSTGRES_DB:-flowml}
+      --default-artifact-root s3://artifacts/mlflow
+      --host 0.0.0.0
+      --port 5000
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    profiles:
+      - mlflow  # Only start with: docker-compose --profile mlflow up
+
+# ===================
+# Networks
+# ===================
+networks:
+  default:
+    name: flowml-network
+
+# ===================
+# Volumes (named for easier management)
+# ===================
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

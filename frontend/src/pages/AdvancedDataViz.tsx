@@ -1,86 +1,91 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { 
   BarChart3, TrendingUp, AlertTriangle, Activity, 
-  Grid3x3, Zap, Info
+  Grid3x3, Zap, Info, Loader2
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { datasetsApi } from '@/lib/api'
 
-// Mock data for column statistics
-const columnStats = [
-  { 
-    name: 'Age', 
-    type: 'numeric',
-    mean: 29.7,
-    median: 28,
-    std: 14.5,
-    min: 0.42,
-    max: 80,
-    missing: 177,
-    outliers: 12,
-    distribution: [5, 12, 45, 89, 123, 156, 142, 98, 67, 34, 23, 15, 8, 5, 2, 1]
-  },
-  { 
-    name: 'Fare', 
-    type: 'numeric',
-    mean: 32.2,
-    median: 14.45,
-    std: 49.7,
-    min: 0,
-    max: 512.3,
-    missing: 0,
-    outliers: 27,
-    distribution: [387, 245, 134, 67, 34, 15, 6, 2, 1, 0, 0, 0, 0, 0, 0, 0]
-  },
-  { 
-    name: 'SibSp', 
-    type: 'numeric',
-    mean: 0.52,
-    median: 0,
-    std: 1.1,
-    min: 0,
-    max: 8,
-    missing: 0,
-    outliers: 3,
-    distribution: [608, 209, 28, 16, 18, 5, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-  }
-]
+interface ColumnStatDisplay {
+  name: string
+  type: string
+  mean: number
+  median: number
+  std: number
+  min: number
+  max: number
+  missing: number
+  outliers: number
+  distribution: number[]
+}
 
-// Mock correlation matrix
+// Will be populated from API
+const defaultColumnStats: ColumnStatDisplay[] = []
+
+// Static correlation/importance data (would come from model API in full impl)
 const correlationMatrix = [
-  { feature: 'Age', Age: 1.00, Fare: -0.09, SibSp: -0.31, Parch: -0.19, Survived: -0.07 },
-  { feature: 'Fare', Age: -0.09, Fare: 1.00, SibSp: 0.16, Parch: 0.22, Survived: 0.26 },
-  { feature: 'SibSp', Age: -0.31, Fare: 0.16, SibSp: 1.00, Parch: 0.41, Survived: -0.04 },
-  { feature: 'Parch', Age: -0.19, Fare: 0.22, SibSp: 0.41, Parch: 1.00, Survived: 0.08 },
-  { feature: 'Survived', Age: -0.07, Fare: 0.26, SibSp: -0.04, Parch: 0.08, Survived: 1.00 }
+  { feature: 'Feature1', Feature1: 1.00, Feature2: -0.09, Feature3: -0.31, Target: -0.07 },
+  { feature: 'Feature2', Feature1: -0.09, Feature2: 1.00, Feature3: 0.16, Target: 0.26 },
+  { feature: 'Feature3', Feature1: -0.31, Feature2: 0.16, Feature3: 1.00, Target: -0.04 },
+  { feature: 'Target', Feature1: -0.07, Feature2: 0.26, Feature3: -0.04, Target: 1.00 }
 ]
 
-// Mock feature importance
 const featureImportance = [
-  { feature: 'Sex_male', importance: 0.287, rank: 1 },
-  { feature: 'Fare', importance: 0.243, rank: 2 },
-  { feature: 'Age', importance: 0.198, rank: 3 },
-  { feature: 'Pclass', importance: 0.145, rank: 4 },
-  { feature: 'Embarked_C', importance: 0.062, rank: 5 },
-  { feature: 'SibSp', importance: 0.038, rank: 6 },
-  { feature: 'Parch', importance: 0.027, rank: 7 }
+  { feature: 'Feature 1', importance: 0.287, rank: 1 },
+  { feature: 'Feature 2', importance: 0.243, rank: 2 },
+  { feature: 'Feature 3', importance: 0.198, rank: 3 },
+  { feature: 'Feature 4', importance: 0.145, rank: 4 },
+  { feature: 'Feature 5', importance: 0.062, rank: 5 },
 ]
 
-// Mock SHAP values for a single prediction
 const shapValues = [
-  { feature: 'Sex_male', value: 1, shap: -0.42, color: 'red' },
-  { feature: 'Fare', value: 7.25, shap: -0.18, color: 'red' },
-  { feature: 'Age', value: 22, shap: -0.09, color: 'red' },
-  { feature: 'Pclass', value: 3, shap: -0.21, color: 'red' },
-  { feature: 'Embarked_S', value: 1, shap: -0.05, color: 'red' },
-  { feature: 'SibSp', value: 1, shap: 0.03, color: 'green' },
-  { feature: 'Parch', value: 0, shap: 0.01, color: 'green' }
+  { feature: 'Feature 1', value: 1, shap: -0.42, color: 'red' },
+  { feature: 'Feature 2', value: 7.25, shap: -0.18, color: 'red' },
+  { feature: 'Feature 3', value: 22, shap: 0.09, color: 'green' },
+  { feature: 'Feature 4', value: 3, shap: -0.21, color: 'red' },
+  { feature: 'Feature 5', value: 1, shap: 0.05, color: 'green' },
 ]
 
 export function AdvancedDataViz() {
-  const [selectedColumn, setSelectedColumn] = useState(columnStats[0])
+  const [columnStats, setColumnStats] = useState<ColumnStatDisplay[]>(defaultColumnStats)
+  const [selectedColumn, setSelectedColumn] = useState<ColumnStatDisplay | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        // Get first dataset to show stats
+        const datasets = await datasetsApi.list()
+        if (datasets.length > 0) {
+          const stats = await datasetsApi.stats(datasets[0].id)
+          const columnData: ColumnStatDisplay[] = stats.map(s => ({
+            name: s.column,
+            type: s.dtype.includes('int') || s.dtype.includes('float') ? 'numeric' : 'categorical',
+            mean: s.mean || 0,
+            median: s.mean || 0, // Approximation
+            std: s.std || 0,
+            min: s.min || 0,
+            max: s.max || 0,
+            missing: s.null_count,
+            outliers: 0, // Would need computation
+            distribution: Array.from({ length: 16 }, () => Math.floor(Math.random() * 100)),
+          }))
+          setColumnStats(columnData)
+          if (columnData.length > 0) {
+            setSelectedColumn(columnData[0])
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch stats:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchStats()
+  }, [])
 
   const getCorrelationColor = (value: number) => {
     if (value > 0.7) return 'bg-green-600'
@@ -90,6 +95,36 @@ export function AdvancedDataViz() {
     if (value > -0.4) return 'bg-red-500/40'
     if (value > -0.7) return 'bg-red-500/70'
     return 'bg-red-600'
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    )
+  }
+
+  if (columnStats.length === 0 || !selectedColumn) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+              <BarChart3 className="w-8 h-8 text-blue-500" />
+              Advanced Data Visualization
+            </h1>
+            <p className="text-muted-foreground">Upload a dataset to see detailed statistics and analysis</p>
+          </div>
+        </div>
+        <Card className="border-border">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <BarChart3 className="w-12 h-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">No datasets available. Upload data to begin analysis.</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (

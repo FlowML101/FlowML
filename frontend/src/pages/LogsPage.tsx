@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ScrollText, Filter } from 'lucide-react'
+import { ScrollText, Filter, Loader2, RefreshCw } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { trainingApi, workersApi } from '@/lib/api'
 
 interface LogEntry {
   id: string
@@ -14,48 +16,107 @@ interface LogEntry {
   message: string
 }
 
-// Mock distributed system logs
-const mockLogs: LogEntry[] = [
-  { id: '1', timestamp: '2025-12-03 14:32:15', source: 'Master', level: 'info', message: 'Cluster initialized successfully' },
-  { id: '2', timestamp: '2025-12-03 14:32:18', source: 'Worker-01', level: 'info', message: 'Handshake successful with 192.168.1.105' },
-  { id: '3', timestamp: '2025-12-03 14:32:19', source: 'Worker-02', level: 'info', message: 'Handshake successful with 192.168.1.142' },
-  { id: '4', timestamp: '2025-12-03 14:32:45', source: 'Master', level: 'info', message: 'Dataset uploaded: titanic.csv (891 rows)' },
-  { id: '5', timestamp: '2025-12-03 14:33:02', source: 'Master', level: 'info', message: 'Starting AutoML pipeline with 20 models' },
-  { id: '6', timestamp: '2025-12-03 14:33:05', source: 'Worker-01', level: 'info', message: 'Training XGBoost model (1/20)' },
-  { id: '7', timestamp: '2025-12-03 14:33:18', source: 'Worker-01', level: 'info', message: 'XGBoost training complete - Accuracy: 0.812' },
-  { id: '8', timestamp: '2025-12-03 14:33:20', source: 'Worker-02', level: 'info', message: 'Training Random Forest model (2/20)' },
-  { id: '9', timestamp: '2025-12-03 14:33:45', source: 'Worker-02', level: 'warn', message: 'High memory usage detected: 87%' },
-  { id: '10', timestamp: '2025-12-03 14:33:48', source: 'Worker-02', level: 'info', message: 'Random Forest training complete - Accuracy: 0.798' },
-  { id: '11', timestamp: '2025-12-03 14:34:01', source: 'Worker-01', level: 'info', message: 'Training LightGBM model (3/20)' },
-  { id: '12', timestamp: '2025-12-03 14:34:22', source: 'Worker-01', level: 'info', message: 'LightGBM training complete - Accuracy: 0.825' },
-  { id: '13', timestamp: '2025-12-03 14:34:25', source: 'Worker-02', level: 'info', message: 'Training CatBoost model (4/20)' },
-  { id: '14', timestamp: '2025-12-03 14:34:58', source: 'Worker-02', level: 'info', message: 'CatBoost training complete - Accuracy: 0.831' },
-  { id: '15', timestamp: '2025-12-03 14:35:02', source: 'Worker-01', level: 'info', message: 'Training Neural Network model (5/20)' },
-  { id: '16', timestamp: '2025-12-03 14:35:18', source: 'Worker-01', level: 'error', message: 'OOM Killer triggered: Neural Network training aborted' },
-  { id: '17', timestamp: '2025-12-03 14:35:20', source: 'Master', level: 'warn', message: 'Worker-01 recovered from OOM, resuming operations' },
-  { id: '18', timestamp: '2025-12-03 14:35:25', source: 'Worker-02', level: 'info', message: 'Training Linear Model (6/20)' },
-  { id: '19', timestamp: '2025-12-03 14:35:30', source: 'Worker-02', level: 'info', message: 'Linear Model training complete - Accuracy: 0.752' },
-  { id: '20', timestamp: '2025-12-03 14:35:35', source: 'Master', level: 'info', message: 'Workload redistributed across 2 workers' },
-  { id: '21', timestamp: '2025-12-03 14:35:40', source: 'Worker-01', level: 'info', message: 'Training Extra Trees model (7/20)' },
-  { id: '22', timestamp: '2025-12-03 14:36:05', source: 'Worker-01', level: 'info', message: 'Extra Trees training complete - Accuracy: 0.818' },
-  { id: '23', timestamp: '2025-12-03 14:36:10', source: 'Worker-03', level: 'info', message: 'New worker node connected: 192.168.1.156' },
-  { id: '24', timestamp: '2025-12-03 14:36:12', source: 'Master', level: 'info', message: 'Cluster expanded to 3 workers' },
-  { id: '25', timestamp: '2025-12-03 14:36:15', source: 'Worker-03', level: 'info', message: 'Training AdaBoost model (8/20)' },
-  { id: '26', timestamp: '2025-12-03 14:36:42', source: 'Worker-03', level: 'info', message: 'AdaBoost training complete - Accuracy: 0.795' },
-  { id: '27', timestamp: '2025-12-03 14:36:50', source: 'Master', level: 'info', message: 'Best model so far: CatBoost (0.831)' },
-  { id: '28', timestamp: '2025-12-03 14:37:00', source: 'Worker-02', level: 'warn', message: 'Connection timeout detected, retrying...' },
-  { id: '29', timestamp: '2025-12-03 14:37:02', source: 'Worker-02', level: 'info', message: 'Connection re-established successfully' },
-  { id: '30', timestamp: '2025-12-03 14:37:10', source: 'Master', level: 'info', message: 'AutoML pipeline 40% complete' },
-]
-
 export function LogsPage() {
-  const [logs] = useState<LogEntry[]>(mockLogs)
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [loading, setLoading] = useState(true)
   const [levelFilter, setLevelFilter] = useState<string>('all')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
 
+  const fetchLogs = async () => {
+    try {
+      setLoading(true)
+      const logEntries: LogEntry[] = []
+      
+      // Fetch jobs and generate logs from their status
+      const jobs = await trainingApi.list()
+      jobs.forEach((job, index) => {
+        logEntries.push({
+          id: `job-created-${job.id}`,
+          timestamp: new Date(job.created_at).toLocaleString(),
+          source: 'Master',
+          level: 'info',
+          message: `Job "${job.name}" created for dataset ${job.dataset_id}`,
+        })
+        
+        if (job.started_at) {
+          logEntries.push({
+            id: `job-started-${job.id}`,
+            timestamp: new Date(job.started_at).toLocaleString(),
+            source: 'Master',
+            level: 'info',
+            message: `Training started: ${job.name} (${job.model_types})`,
+          })
+        }
+        
+        if (job.status === 'running' && job.current_model) {
+          logEntries.push({
+            id: `job-training-${job.id}`,
+            timestamp: new Date().toLocaleString(),
+            source: `Worker-${(index % 3) + 1}`,
+            level: 'info',
+            message: `Training ${job.current_model} (${job.models_completed}/${job.total_models})`,
+          })
+        }
+        
+        if (job.status === 'completed') {
+          logEntries.push({
+            id: `job-complete-${job.id}`,
+            timestamp: job.completed_at ? new Date(job.completed_at).toLocaleString() : new Date().toLocaleString(),
+            source: 'Master',
+            level: 'info',
+            message: `Job "${job.name}" completed - ${job.models_completed} models trained`,
+          })
+        }
+        
+        if (job.status === 'failed') {
+          logEntries.push({
+            id: `job-failed-${job.id}`,
+            timestamp: job.completed_at ? new Date(job.completed_at).toLocaleString() : new Date().toLocaleString(),
+            source: 'Master',
+            level: 'error',
+            message: `Job "${job.name}" failed: ${job.error_message || 'Unknown error'}`,
+          })
+        }
+      })
+      
+      // Fetch workers and add connection logs
+      try {
+        const workers = await workersApi.list()
+        workers.forEach(worker => {
+          logEntries.push({
+            id: `worker-${worker.id}`,
+            timestamp: new Date().toLocaleString(),
+            source: worker.hostname,
+            level: worker.status === 'online' ? 'info' : 'warn',
+            message: worker.status === 'online' 
+              ? `Connected: ${worker.ip} (${worker.cpu_count} cores, ${worker.ram_total_gb.toFixed(1)}GB RAM)`
+              : `Worker offline or degraded`,
+          })
+        })
+      } catch {
+        // Workers API might fail, that's okay
+      }
+      
+      // Sort by timestamp (newest first)
+      logEntries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      
+      setLogs(logEntries)
+    } catch (err) {
+      console.error('Failed to fetch logs:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchLogs()
+    const interval = setInterval(fetchLogs, 10000) // Refresh every 10 seconds
+    return () => clearInterval(interval)
+  }, [])
+
   // Get unique sources
-  const sources = ['all', ...Array.from(new Set(mockLogs.map(log => log.source)))]
+  const sources = ['all', ...Array.from(new Set(logs.map(log => log.source)))]
 
   // Filter logs
   const filteredLogs = logs.filter(log => {
@@ -93,6 +154,10 @@ export function LogsPage() {
           <p className="text-muted-foreground">Centralized audit trail and monitoring for distributed cluster operations</p>
         </div>
         <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={fetchLogs} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <Badge variant="outline" className="text-sm px-4 py-2">
             {filteredLogs.length} entries
           </Badge>

@@ -1,59 +1,60 @@
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Server, Activity, Pause, RotateCcw } from 'lucide-react'
+import { Server, Activity, Pause, RotateCcw, Loader2 } from 'lucide-react'
+import { workersApi, statsApi } from '@/lib/api'
 
-const mockWorkers = [
-  {
-    id: '1',
-    hostname: 'master-node',
-    role: 'Master',
-    status: 'online',
-    ip: '192.168.1.100',
-    vramUsage: '2.1/4.0 GB',
-    vramPercent: 52,
-    cpuUsage: '45%',
-    uptime: '3d 14h',
-  },
-  {
-    id: '2',
-    hostname: 'worker-laptop-01',
-    role: 'Worker',
-    status: 'online',
-    ip: '192.168.1.105',
-    vramUsage: '3.2/6.0 GB',
-    vramPercent: 53,
-    cpuUsage: '68%',
-    uptime: '2d 8h',
-  },
-  {
-    id: '3',
-    hostname: 'worker-desktop-02',
-    role: 'Worker',
-    status: 'online',
-    ip: '192.168.1.142',
-    vramUsage: '1.8/8.0 GB',
-    vramPercent: 22,
-    cpuUsage: '34%',
-    uptime: '1d 16h',
-  },
-  {
-    id: '4',
-    hostname: 'worker-laptop-03',
-    role: 'Worker',
-    status: 'offline',
-    ip: '192.168.1.156',
-    vramUsage: '-',
-    vramPercent: 0,
-    cpuUsage: '-',
-    uptime: '-',
-  },
-]
+interface WorkerData {
+  id: string
+  hostname: string
+  role: string
+  status: string
+  ip: string
+  cpu_count: number
+  cpu_percent: number
+  ram_total_gb: number
+  ram_used_gb: number
+  ram_percent: number
+  gpu_name?: string
+  vram_total_gb?: number
+  vram_used_gb?: number
+  vram_percent?: number
+  uptime: string
+}
 
 export function WorkersManager() {
-  const onlineWorkers = mockWorkers.filter(w => w.status === 'online').length
-  const totalWorkers = mockWorkers.length
+  const [workers, setWorkers] = useState<WorkerData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchWorkers = async () => {
+      try {
+        const [master, available] = await Promise.all([
+          workersApi.getMaster(),
+          workersApi.getAvailable()
+        ])
+        
+        // Master is always first
+        const allWorkers: WorkerData[] = [master as WorkerData]
+        setWorkers(allWorkers)
+        setStats(available)
+      } catch (err) {
+        console.error('Failed to fetch workers:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchWorkers()
+    const interval = setInterval(fetchWorkers, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const onlineWorkers = workers.filter(w => w.status === 'online').length
+  const totalWorkers = workers.length
 
   return (
     <div className="space-y-6">
@@ -131,6 +132,11 @@ export function WorkersManager() {
           <CardDescription>Manage and monitor all workers in your mesh</CardDescription>
         </CardHeader>
         <CardContent className="relative">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -138,19 +144,19 @@ export function WorkersManager() {
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>IP Address</TableHead>
-                <TableHead>VRAM Usage</TableHead>
+                <TableHead>RAM Usage</TableHead>
                 <TableHead>CPU Load</TableHead>
                 <TableHead>Uptime</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockWorkers.map((worker) => (
+              {workers.map((worker) => (
                 <TableRow key={worker.id}>
                   <TableCell className="font-medium">{worker.hostname}</TableCell>
                   <TableCell>
-                    <Badge variant={worker.role === 'Master' ? 'default' : 'secondary'}>
-                      {worker.role}
+                    <Badge variant={worker.role === 'orchestrator' ? 'default' : 'secondary'}>
+                      {worker.role === 'orchestrator' ? 'Master' : 'Worker'}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -170,11 +176,11 @@ export function WorkersManager() {
                   <TableCell>
                     {worker.status === 'online' ? (
                       <div className="space-y-1">
-                        <div className="text-sm">{worker.vramUsage}</div>
+                        <div className="text-sm">{worker.ram_used_gb?.toFixed(1)}/{worker.ram_total_gb?.toFixed(1)} GB</div>
                         <div className="w-24 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-purple-600 transition-all"
-                            style={{ width: `${worker.vramPercent}%` }}
+                            className="h-full bg-blue-600 transition-all"
+                            style={{ width: `${worker.ram_percent || 0}%` }}
                           />
                         </div>
                       </div>
@@ -182,10 +188,10 @@ export function WorkersManager() {
                       <span className="text-zinc-600">-</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{worker.cpuUsage}</TableCell>
+                  <TableCell className="text-muted-foreground">{worker.cpu_percent?.toFixed(0)}%</TableCell>
                   <TableCell className="text-muted-foreground text-xs">{worker.uptime}</TableCell>
                   <TableCell className="text-right">
-                    {worker.status === 'online' && worker.role !== 'Master' && (
+                    {worker.status === 'online' && worker.role !== 'orchestrator' && (
                       <div className="flex gap-2 justify-end">
                         <Button
                           variant="ghost"
@@ -208,6 +214,7 @@ export function WorkersManager() {
               ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
     </div>

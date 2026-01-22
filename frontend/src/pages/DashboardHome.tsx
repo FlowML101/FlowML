@@ -1,11 +1,36 @@
+import { useState, useEffect } from 'react'
 import { ClusterHealth } from '@/features/dashboard/ClusterHealth'
 import { ResourceGauges } from '@/features/dashboard/ResourceGauges'
 import { ActiveJobs } from '@/features/dashboard/ActiveJobs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { TrendingUp, Zap, Database, CheckCircle, LayoutDashboard } from 'lucide-react'
+import { TrendingUp, Zap, Database, CheckCircle, LayoutDashboard, Loader2, AlertCircle } from 'lucide-react'
+import { statsApi, DashboardStats } from '@/lib/api'
 
 export function DashboardHome() {
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [connected, setConnected] = useState(true)
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const data = await statsApi.getDashboard()
+        setStats(data)
+        setConnected(true)
+      } catch (err) {
+        console.error('Failed to fetch stats:', err)
+        setConnected(false)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchStats()
+    const interval = setInterval(fetchStats, 10000)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -17,9 +42,9 @@ export function DashboardHome() {
           </h1>
           <p className="text-muted-foreground">Real-time monitoring of your distributed AutoML cluster performance</p>
         </div>
-        <Badge variant="outline" className="text-sm px-4 py-2 flex items-center gap-2">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          All Systems Operational
+        <Badge variant="outline" className={`text-sm px-4 py-2 flex items-center gap-2 ${connected ? '' : 'border-red-500 text-red-500'}`}>
+          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+          {connected ? 'All Systems Operational' : 'Backend Disconnected'}
         </Badge>
       </div>
 
@@ -31,8 +56,14 @@ export function DashboardHome() {
             <CheckCircle className="w-4 h-4 text-green-500" />
           </CardHeader>
           <CardContent className="relative">
-            <div className="text-2xl font-bold">47</div>
-            <p className="text-xs text-muted-foreground">+3 this week</p>
+            {loading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats?.total_models || 0}</div>
+                <p className="text-xs text-muted-foreground">+{stats?.models_this_week || 0} this week</p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -42,8 +73,14 @@ export function DashboardHome() {
             <Zap className="w-4 h-4 text-yellow-500" />
           </CardHeader>
           <CardContent className="relative">
-            <div className="text-2xl font-bold">2</div>
-            <p className="text-xs text-muted-foreground">1 running, 1 queued</p>
+            {loading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats?.active_jobs || 0}</div>
+                <p className="text-xs text-muted-foreground">{stats?.jobs_running || 0} running, {stats?.jobs_queued || 0} queued</p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -53,8 +90,14 @@ export function DashboardHome() {
             <Database className="w-4 h-4 text-blue-500" />
           </CardHeader>
           <CardContent className="relative">
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-muted-foreground">856K total rows</p>
+            {loading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats?.total_datasets || 0}</div>
+                <p className="text-xs text-muted-foreground">Ready for training</p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -64,8 +107,16 @@ export function DashboardHome() {
             <TrendingUp className="w-4 h-4 text-purple-500" />
           </CardHeader>
           <CardContent className="relative">
-            <div className="text-2xl font-bold">94.2%</div>
-            <p className="text-xs text-muted-foreground">+2.1% from last month</p>
+            {loading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">
+                  {stats?.avg_accuracy ? `${(stats.avg_accuracy * 100).toFixed(1)}%` : 'N/A'}
+                </div>
+                <p className="text-xs text-muted-foreground">Best model accuracy</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
