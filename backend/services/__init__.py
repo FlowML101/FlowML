@@ -1,7 +1,8 @@
 """
 Services package
 """
-from services.automl import AutoMLService
+from services.optuna_automl import optuna_automl, OptunaAutoML
 from services.websocket_manager import manager
+from services.storage import StorageService
 
-__all__ = ["AutoMLService", "manager"]
+__all__ = ["optuna_automl", "OptunaAutoML", "manager", "StorageService"]
