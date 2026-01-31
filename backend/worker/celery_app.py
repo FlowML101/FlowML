@@ -19,6 +19,7 @@ celery_app = Celery(
         "worker.tasks.training",
         "worker.tasks.preprocessing",
         "worker.tasks.inference",
+        "worker.tasks.llm",
     ]
 )
 

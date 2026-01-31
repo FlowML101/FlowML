@@ -87,6 +87,53 @@ services:
       "
 
   # ===================
+  # Ollama - Local LLM Server
+  # ===================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: flowml-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # GPU is optional - remove deploy section if no GPU
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ===================
+  # Ollama Setup - Pull default models
+  # ===================
+  ollama-setup:
+    image: curlimages/curl:latest
+    container_name: flowml-ollama-setup
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Pulling Qwen2.5:3b model...';
+      curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"qwen2.5:3b\"}';
+      echo 'Ollama setup complete';
+      exit 0;
+      "
+    profiles:
+      - ollama-setup  # Run with: docker-compose --profile ollama-setup up
+
+  # ===================
   # MLflow - Experiment Tracking (Optional)
   # ===================
   mlflow:

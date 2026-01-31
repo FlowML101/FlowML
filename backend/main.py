@@ -16,7 +16,8 @@ from routers import (
     training_router,
     results_router,
     workers_router,
-    stats_router
+    stats_router,
+    llm_router
 )
 
 
@@ -77,6 +78,7 @@ app.include_router(training_router, prefix="/api")
 app.include_router(results_router, prefix="/api")
 app.include_router(workers_router, prefix="/api")
 app.include_router(stats_router, prefix="/api")
+app.include_router(llm_router, prefix="/api")
 
 
 # Health check
