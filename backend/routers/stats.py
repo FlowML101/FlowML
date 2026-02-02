@@ -101,6 +101,91 @@ async def get_dashboard_stats(
     )
 
 
+class GPUStatus(BaseModel):
+    """GPU status for ML training"""
+    available: bool
+    count: int
+    name: str
+    vram_total_gb: float
+    vram_used_gb: float
+    vram_free_gb: float
+    utilization_percent: float
+    
+    # ML Framework GPU support
+    xgboost_gpu: bool
+    lightgbm_gpu: bool
+    catboost_gpu: bool
+    pytorch_cuda: bool
+    
+    # Training status
+    training_accelerated: bool
+    acceleration_libs: list[str]
+
+
+@router.get("/gpu", response_model=GPUStatus)
+async def get_gpu_status():
+    """Get GPU status and ML acceleration capabilities"""
+    from services.optuna_automl import (
+        GPU_AVAILABLE, GPU_COUNT, GPU_VRAM_GB, GPU_NAME,
+        XGBOOST_GPU_AVAILABLE, LIGHTGBM_GPU_AVAILABLE, CATBOOST_AVAILABLE
+    )
+    
+    vram_used = 0.0
+    vram_free = GPU_VRAM_GB
+    utilization = 0.0
+    
+    # Get real-time GPU stats
+    if GPU_AVAILABLE:
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            vram_used = mem_info.used / (1024**3)
+            vram_free = mem_info.free / (1024**3)
+            
+            util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+            utilization = util.gpu
+            pynvml.nvmlShutdown()
+        except Exception:
+            pass
+    
+    # Check PyTorch CUDA
+    pytorch_cuda = False
+    try:
+        import torch
+        pytorch_cuda = torch.cuda.is_available()
+    except ImportError:
+        pass
+    
+    # Build acceleration libs list
+    accel_libs = []
+    if XGBOOST_GPU_AVAILABLE:
+        accel_libs.append("XGBoost")
+    if LIGHTGBM_GPU_AVAILABLE:
+        accel_libs.append("LightGBM")
+    if CATBOOST_AVAILABLE and GPU_AVAILABLE:
+        accel_libs.append("CatBoost")
+    if pytorch_cuda:
+        accel_libs.append("PyTorch")
+    
+    return GPUStatus(
+        available=GPU_AVAILABLE,
+        count=GPU_COUNT,
+        name=GPU_NAME,
+        vram_total_gb=round(GPU_VRAM_GB, 2),
+        vram_used_gb=round(vram_used, 2),
+        vram_free_gb=round(vram_free, 2),
+        utilization_percent=utilization,
+        xgboost_gpu=XGBOOST_GPU_AVAILABLE,
+        lightgbm_gpu=LIGHTGBM_GPU_AVAILABLE,
+        catboost_gpu=CATBOOST_AVAILABLE and GPU_AVAILABLE,
+        pytorch_cuda=pytorch_cuda,
+        training_accelerated=len(accel_libs) > 0,
+        acceleration_libs=accel_libs
+    )
+
+
 @router.get("/resources", response_model=ResourceStats)
 async def get_resource_stats():
     """Get current resource usage"""
@@ -115,17 +200,14 @@ async def get_resource_stats():
     vram_total = None
     
     try:
-        import subprocess
-        result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=memory.total,memory.used', '--format=csv,noheader,nounits'],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            parts = result.stdout.strip().split(', ')
-            if len(parts) >= 2:
-                vram_total = float(parts[0]) / 1024  # MB to GB
-                vram_used = float(parts[1]) / 1024
-                vram_percent = (vram_used / vram_total) * 100 if vram_total > 0 else 0
+        import pynvml
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        vram_total = mem_info.total / (1024**3)
+        vram_used = mem_info.used / (1024**3)
+        vram_percent = (vram_used / vram_total) * 100 if vram_total > 0 else 0
+        pynvml.nvmlShutdown()
     except:
         pass
     

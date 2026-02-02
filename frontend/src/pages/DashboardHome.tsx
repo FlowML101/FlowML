@@ -4,7 +4,7 @@ import { ResourceGauges } from '@/features/dashboard/ResourceGauges'
 import { ActiveJobs } from '@/features/dashboard/ActiveJobs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { TrendingUp, Zap, Database, CheckCircle, LayoutDashboard, Loader2, AlertCircle } from 'lucide-react'
+import { TrendingUp, Zap, Database, CheckCircle, LayoutDashboard, Loader2 } from 'lucide-react'
 import { statsApi, DashboardStats } from '@/lib/api'
 
 export function DashboardHome() {

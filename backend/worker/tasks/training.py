@@ -235,6 +235,14 @@ def train_single_model(
         else:
             df = pl.read_csv(dataset_path).to_pandas()
         
+        # Sample if dataset is too large (prevent memory issues)
+        MAX_ROWS = 100000
+        MAX_ONEHOT_CARDINALITY = 50
+        
+        if len(df) > MAX_ROWS:
+            logger.info(f"[{job_id}] Sampling {MAX_ROWS} rows from {len(df)} total rows")
+            df = df.sample(n=MAX_ROWS, random_state=42)
+        
         # Basic preprocessing
         X = df.drop(columns=[target_column])
         y = df[target_column]
@@ -246,8 +254,31 @@ def train_single_model(
             label_encoder = LabelEncoder()
             y = label_encoder.fit_transform(y)
         
-        # Simple preprocessing for features
-        X = pd.get_dummies(X, drop_first=True)
+        # Smart preprocessing for features - handle high cardinality columns
+        numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+        categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+        
+        # Fill missing values
+        for col in numeric_cols:
+            X[col] = X[col].fillna(X[col].median())
+        
+        # Handle categorical columns with cardinality limit
+        low_cardinality_cols = []
+        for col in categorical_cols:
+            X[col] = X[col].fillna("MISSING")
+            n_unique = X[col].nunique()
+            if n_unique <= MAX_ONEHOT_CARDINALITY:
+                low_cardinality_cols.append(col)
+            else:
+                # Label encode high cardinality columns
+                le = LabelEncoder()
+                X[col] = le.fit_transform(X[col].astype(str))
+                logger.info(f"[{job_id}] Column '{col}' has {n_unique} unique values - label encoded")
+        
+        # One-hot encode only low cardinality columns
+        if low_cardinality_cols:
+            X = pd.get_dummies(X, columns=low_cardinality_cols, drop_first=True)
+        
         X = X.fillna(0)
         
         # Auto-detect problem type

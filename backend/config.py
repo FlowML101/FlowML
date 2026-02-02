@@ -60,7 +60,26 @@ class Settings(BaseSettings):
     
     # Upload limits
     MAX_UPLOAD_SIZE_MB: int = 500  # Max file size in MB
-    ALLOWED_EXTENSIONS: set[str] = {".csv", ".parquet"}
+    ALLOWED_EXTENSIONS: set[str] = {
+        # Text/CSV
+        ".csv", ".tsv", ".txt",
+        # Spreadsheets
+        ".xlsx", ".xls",
+        # Columnar/Binary
+        ".parquet", ".pq", ".feather", ".arrow", ".ipc",
+        # JSON
+        ".json", ".jsonl", ".ndjson",
+        # Config formats
+        ".yaml", ".yml", ".toml", ".xml",
+        # Financial (bank statements)
+        ".ofx", ".qfx", ".qif",
+        # Personal data
+        ".ics", ".ical", ".vcf", ".vcard",
+        # Database
+        ".sqlite", ".db", ".sqlite3",
+        # Logs
+        ".log",
+    }
     
     # ===================
     # AutoML
@@ -94,6 +113,21 @@ class Settings(BaseSettings):
     # Ray (Phase 2 - distributed)
     # ===================
     RAY_HEAD_ADDRESS: Optional[str] = None  # None = local mode
+    
+    # ===================
+    # Tailscale / Cluster
+    # ===================
+    CLUSTER_MODE: Literal["local", "lan", "tailscale"] = "local"
+    FLOWML_ROLE: Literal["master", "worker", "auto"] = "auto"
+    
+    # Tailscale settings (auto-detected if installed)
+    TAILSCALE_ENABLED: bool = False  # Set True to prefer Tailscale IPs
+    TAILSCALE_AUTH_KEY: Optional[str] = None  # For automated worker joining
+    
+    # Master node address (for workers to connect)
+    # In Tailscale mode: hostname.tailnet.ts.net or 100.x.x.x
+    # In LAN mode: local IP
+    MASTER_ADDRESS: Optional[str] = None  # Auto-detected if None
     
     # ===================
     # Security

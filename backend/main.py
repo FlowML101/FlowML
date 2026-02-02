@@ -19,6 +19,8 @@ from routers import (
     stats_router,
     llm_router
 )
+from routers.cluster import router as cluster_router
+from routers.logs import router as logs_router
 
 
 # Configure logging
@@ -36,6 +38,71 @@ logger.add(
 )
 
 
+async def cleanup_stale_jobs():
+    """Mark any jobs stuck in 'running' or 'pending' status as failed on startup"""
+    from database import async_session
+    from models.job import Job, JobStatus
+    from sqlmodel import select
+    from datetime import datetime
+    
+    async with async_session() as session:
+        result = await session.execute(
+            select(Job).where(Job.status.in_([JobStatus.RUNNING, JobStatus.PENDING]))
+        )
+        stale_jobs = result.scalars().all()
+        
+        for job in stale_jobs:
+            job.status = JobStatus.FAILED
+            job.error_message = "Job interrupted by server restart"
+            job.completed_at = datetime.utcnow()
+            logger.warning(f"Marked stale job {job.id} ({job.name}) as failed")
+        
+        if stale_jobs:
+            await session.commit()
+            logger.info(f"Cleaned up {len(stale_jobs)} stale jobs")
+
+
+async def cancel_all_running_jobs():
+    """Cancel all currently running jobs on shutdown"""
+    from routers.training import _running_jobs
+    from database import async_session
+    from models.job import Job, JobStatus
+    from sqlmodel import select
+    from datetime import datetime
+    import gc
+    
+    # Signal all running jobs to cancel
+    cancelled_count = 0
+    for job_id, cancel_event in list(_running_jobs.items()):
+        cancel_event.set()
+        cancelled_count += 1
+        logger.info(f"Sent cancel signal to job {job_id}")
+    
+    # Update database status for running jobs
+    async with async_session() as session:
+        result = await session.execute(
+            select(Job).where(Job.status == JobStatus.RUNNING)
+        )
+        running_jobs = result.scalars().all()
+        
+        for job in running_jobs:
+            job.status = JobStatus.CANCELLED
+            job.error_message = "Job cancelled due to server shutdown"
+            job.completed_at = datetime.utcnow()
+        
+        if running_jobs:
+            await session.commit()
+    
+    # Clear the running jobs dict
+    _running_jobs.clear()
+    
+    # Force garbage collection to free memory
+    gc.collect()
+    
+    if cancelled_count > 0:
+        logger.info(f"Cancelled {cancelled_count} running jobs and freed resources")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown"""
@@ -43,13 +110,19 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting FlowML Studio Backend...")
     await init_db()
     logger.info("✅ Database initialized")
+    
+    # Clean up any stale jobs from previous runs
+    await cleanup_stale_jobs()
+    
     logger.info(f"📁 Upload directory: {settings.UPLOAD_DIR}")
     logger.info(f"📁 Models directory: {settings.MODELS_DIR}")
     
     yield
     
-    # Shutdown
+    # Shutdown - cancel running jobs and free resources
     logger.info("👋 Shutting down FlowML Studio Backend...")
+    await cancel_all_running_jobs()
+    logger.info("✅ Cleanup complete")
 
 
 # Create FastAPI app
@@ -78,6 +151,8 @@ app.include_router(training_router, prefix="/api")
 app.include_router(results_router, prefix="/api")
 app.include_router(workers_router, prefix="/api")
 app.include_router(stats_router, prefix="/api")
+app.include_router(cluster_router, prefix="/api")
+app.include_router(logs_router, prefix="/api")
 app.include_router(llm_router, prefix="/api")
 
 

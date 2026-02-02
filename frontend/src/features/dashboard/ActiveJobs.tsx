@@ -42,7 +42,7 @@ export function ActiveJobs() {
             </CardTitle>
             <CardDescription>Real-time training pipeline status</CardDescription>
           </div>
-          <Link to="/app/train">
+          <Link to="/train">
             <Button size="sm" className="bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700">
               New Job
             </Button>
@@ -99,7 +99,7 @@ export function ActiveJobs() {
                 </div>
                 {job.status === 'running' && (
                   <Link
-                    to="/app/running"
+                    to="/running"
                     className="text-purple-400 hover:text-purple-300 flex items-center gap-1"
                   >
                     <TrendingUp className="w-3 h-3" />

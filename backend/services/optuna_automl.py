@@ -37,10 +37,16 @@ from loguru import logger
 
 # Import models
 from sklearn.linear_model import LogisticRegression, Ridge, Lasso, ElasticNet
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
+from sklearn.ensemble import (
+    RandomForestClassifier, RandomForestRegressor,
+    GradientBoostingClassifier, GradientBoostingRegressor,
+    ExtraTreesClassifier, ExtraTreesRegressor,
+    AdaBoostClassifier, AdaBoostRegressor,
+)
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.svm import SVC, SVR
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.naive_bayes import GaussianNB
 
 # Optional: XGBoost and LightGBM
 try:
@@ -54,6 +60,57 @@ try:
     LIGHTGBM_AVAILABLE = True
 except ImportError:
     LIGHTGBM_AVAILABLE = False
+
+try:
+    import catboost as cb
+    CATBOOST_AVAILABLE = True
+except ImportError:
+    CATBOOST_AVAILABLE = False
+
+# GPU Detection
+def _detect_gpu() -> tuple[bool, int, float, str]:
+    """Detect NVIDIA GPU availability for XGBoost/LightGBM"""
+    try:
+        # nvidia-ml-py provides the pynvml module
+        import pynvml
+        pynvml.nvmlInit()
+        device_count = pynvml.nvmlDeviceGetCount()
+        if device_count == 0:
+            pynvml.nvmlShutdown()
+            return False, 0, 0.0, "none"
+        
+        # Get total VRAM
+        total_vram = 0.0
+        gpu_name = "unknown"
+        for i in range(device_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            total_vram += mem_info.total / (1024**3)
+            if i == 0:
+                name = pynvml.nvmlDeviceGetName(handle)
+                gpu_name = name.decode('utf-8') if isinstance(name, bytes) else name
+        
+        pynvml.nvmlShutdown()
+        return True, device_count, round(total_vram, 2), gpu_name
+    except Exception:
+        return False, 0, 0.0, "none"
+
+GPU_AVAILABLE, GPU_COUNT, GPU_VRAM_GB, GPU_NAME = _detect_gpu()
+
+# Verify XGBoost CUDA support
+XGBOOST_GPU_AVAILABLE = False
+if XGBOOST_AVAILABLE and GPU_AVAILABLE:
+    try:
+        build_info = xgb.build_info()
+        XGBOOST_GPU_AVAILABLE = build_info.get('USE_CUDA', False)
+    except Exception:
+        pass
+
+# LightGBM GPU is available if GPU is detected (pip version supports it)
+LIGHTGBM_GPU_AVAILABLE = LIGHTGBM_AVAILABLE and GPU_AVAILABLE
+
+logger.info(f"GPU Detection: available={GPU_AVAILABLE}, count={GPU_COUNT}, vram={GPU_VRAM_GB}GB, name={GPU_NAME}")
+logger.info(f"GPU Training: XGBoost={XGBOOST_GPU_AVAILABLE}, LightGBM={LIGHTGBM_GPU_AVAILABLE}")
 
 
 class ProblemType(str, Enum):
@@ -137,6 +194,46 @@ class OptunaAutoML:
                 "weights": trial.suggest_categorical("weights", ["uniform", "distance"]),
             }
         },
+        "svm": {
+            "class": SVC,
+            "params": lambda trial: {
+                "C": trial.suggest_float("C", 1e-3, 100, log=True),
+                "kernel": trial.suggest_categorical("kernel", ["rbf", "poly", "sigmoid"]),
+                "gamma": trial.suggest_categorical("gamma", ["scale", "auto"]),
+                "probability": True,
+            }
+        },
+        "decision_tree": {
+            "class": DecisionTreeClassifier,
+            "params": lambda trial: {
+                "max_depth": trial.suggest_int("max_depth", 3, 20),
+                "min_samples_split": trial.suggest_int("min_samples_split", 2, 20),
+                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 10),
+                "criterion": trial.suggest_categorical("criterion", ["gini", "entropy"]),
+            }
+        },
+        "extra_trees": {
+            "class": ExtraTreesClassifier,
+            "params": lambda trial: {
+                "n_estimators": trial.suggest_int("n_estimators", 50, 300),
+                "max_depth": trial.suggest_int("max_depth", 3, 20),
+                "min_samples_split": trial.suggest_int("min_samples_split", 2, 20),
+                "n_jobs": -1,
+            }
+        },
+        "adaboost": {
+            "class": AdaBoostClassifier,
+            "params": lambda trial: {
+                "n_estimators": trial.suggest_int("n_estimators", 50, 300),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 2.0, log=True),
+            }
+        },
+        "naive_bayes": {
+            "class": GaussianNB,
+            "params": lambda trial: {
+                "var_smoothing": trial.suggest_float("var_smoothing", 1e-12, 1e-6, log=True),
+            }
+        },
     }
     
     # Model definitions for regression
@@ -172,16 +269,95 @@ class OptunaAutoML:
                 "max_depth": trial.suggest_int("max_depth", 3, 10),
             }
         },
+        "elastic_net": {
+            "class": ElasticNet,
+            "params": lambda trial: {
+                "alpha": trial.suggest_float("alpha", 1e-4, 10, log=True),
+                "l1_ratio": trial.suggest_float("l1_ratio", 0.0, 1.0),
+                "max_iter": 2000,
+            }
+        },
+        "svr": {
+            "class": SVR,
+            "params": lambda trial: {
+                "C": trial.suggest_float("C", 1e-3, 100, log=True),
+                "kernel": trial.suggest_categorical("kernel", ["rbf", "poly", "sigmoid"]),
+                "gamma": trial.suggest_categorical("gamma", ["scale", "auto"]),
+                "epsilon": trial.suggest_float("epsilon", 0.01, 1.0),
+            }
+        },
+        "knn": {
+            "class": KNeighborsRegressor,
+            "params": lambda trial: {
+                "n_neighbors": trial.suggest_int("n_neighbors", 3, 25),
+                "weights": trial.suggest_categorical("weights", ["uniform", "distance"]),
+            }
+        },
+        "decision_tree": {
+            "class": DecisionTreeRegressor,
+            "params": lambda trial: {
+                "max_depth": trial.suggest_int("max_depth", 3, 20),
+                "min_samples_split": trial.suggest_int("min_samples_split", 2, 20),
+                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 10),
+            }
+        },
+        "extra_trees": {
+            "class": ExtraTreesRegressor,
+            "params": lambda trial: {
+                "n_estimators": trial.suggest_int("n_estimators", 50, 300),
+                "max_depth": trial.suggest_int("max_depth", 3, 20),
+                "min_samples_split": trial.suggest_int("min_samples_split", 2, 20),
+                "n_jobs": -1,
+            }
+        },
+        "adaboost": {
+            "class": AdaBoostRegressor,
+            "params": lambda trial: {
+                "n_estimators": trial.suggest_int("n_estimators", 50, 300),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 2.0, log=True),
+            }
+        },
     }
     
-    def __init__(self):
+    def __init__(self, use_gpu: bool = True):
+        """
+        Initialize AutoML with optional GPU acceleration.
+        
+        Args:
+            use_gpu: Whether to use GPU for XGBoost/LightGBM training.
+                     Automatically disabled if no GPU detected.
+        """
+        self.use_gpu = use_gpu and GPU_AVAILABLE
+        self.gpu_info = {
+            "available": GPU_AVAILABLE,
+            "count": GPU_COUNT,
+            "vram_gb": GPU_VRAM_GB,
+            "name": GPU_NAME,
+            "xgboost_gpu": XGBOOST_GPU_AVAILABLE,
+            "lightgbm_gpu": LIGHTGBM_GPU_AVAILABLE,
+        }
+        
+        if self.use_gpu:
+            logger.info(f"🚀 GPU Training ENABLED - {GPU_NAME} ({GPU_VRAM_GB}GB VRAM)")
+        else:
+            logger.info("💻 CPU Training mode")
+        
         self._add_xgboost_models()
         self._add_lightgbm_models()
+        self._add_catboost_models()
     
     def _add_xgboost_models(self):
-        """Add XGBoost models if available"""
+        """Add XGBoost models if available - with GPU acceleration!"""
         if not XGBOOST_AVAILABLE:
             return
+        
+        # GPU settings for XGBoost
+        use_gpu = self.use_gpu and XGBOOST_GPU_AVAILABLE
+        device = "cuda" if use_gpu else "cpu"
+        tree_method = "hist"  # hist works for both CPU and GPU, auto-detects
+        
+        if use_gpu:
+            logger.info("⚡ XGBoost GPU acceleration enabled")
         
         self.CLASSIFICATION_MODELS["xgboost"] = {
             "class": xgb.XGBClassifier,
@@ -194,6 +370,8 @@ class OptunaAutoML:
                 "use_label_encoder": False,
                 "eval_metric": "logloss",
                 "verbosity": 0,
+                "device": device,
+                "tree_method": tree_method,
             }
         }
         
@@ -206,13 +384,22 @@ class OptunaAutoML:
                 "subsample": trial.suggest_float("subsample", 0.6, 1.0),
                 "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
                 "verbosity": 0,
+                "device": device,
+                "tree_method": tree_method,
             }
         }
     
     def _add_lightgbm_models(self):
-        """Add LightGBM models if available"""
+        """Add LightGBM models if available - with GPU acceleration!"""
         if not LIGHTGBM_AVAILABLE:
             return
+        
+        # GPU settings for LightGBM
+        use_gpu = self.use_gpu and LIGHTGBM_GPU_AVAILABLE
+        device = "gpu" if use_gpu else "cpu"
+        
+        if use_gpu:
+            logger.info("⚡ LightGBM GPU acceleration enabled")
         
         self.CLASSIFICATION_MODELS["lightgbm"] = {
             "class": lgb.LGBMClassifier,
@@ -224,6 +411,7 @@ class OptunaAutoML:
                 "subsample": trial.suggest_float("subsample", 0.6, 1.0),
                 "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
                 "verbosity": -1,
+                "device": device,
             }
         }
         
@@ -235,6 +423,35 @@ class OptunaAutoML:
                 "max_depth": trial.suggest_int("max_depth", 3, 12),
                 "num_leaves": trial.suggest_int("num_leaves", 20, 150),
                 "verbosity": -1,
+                "device": device,
+            }
+        }
+    
+    def _add_catboost_models(self):
+        """Add CatBoost models if available - great for categorical features!"""
+        if not CATBOOST_AVAILABLE:
+            return
+        
+        self.CLASSIFICATION_MODELS["catboost"] = {
+            "class": cb.CatBoostClassifier,
+            "params": lambda trial: {
+                "iterations": trial.suggest_int("iterations", 100, 500),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+                "depth": trial.suggest_int("depth", 4, 10),
+                "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1, 10),
+                "random_strength": trial.suggest_float("random_strength", 0.5, 2.0),
+                "verbose": False,
+            }
+        }
+        
+        self.REGRESSION_MODELS["catboost"] = {
+            "class": cb.CatBoostRegressor,
+            "params": lambda trial: {
+                "iterations": trial.suggest_int("iterations", 100, 500),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+                "depth": trial.suggest_int("depth", 4, 10),
+                "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1, 10),
+                "verbose": False,
             }
         }
     
@@ -255,10 +472,18 @@ class OptunaAutoML:
     def preprocess_data(
         self, 
         df: pd.DataFrame, 
-        target_column: str
+        target_column: str,
+        max_rows: int = 100000,
+        max_onehot_cardinality: int = 50,
     ) -> Tuple[np.ndarray, np.ndarray, List[str], Optional[LabelEncoder]]:
         """
         Preprocess data for ML training.
+        
+        Args:
+            df: Input DataFrame
+            target_column: Name of target column
+            max_rows: Maximum rows to use (sample if larger)
+            max_onehot_cardinality: Max unique values for one-hot encoding
         
         Returns:
             X: Feature matrix
@@ -266,6 +491,11 @@ class OptunaAutoML:
             feature_names: List of feature names
             label_encoder: LabelEncoder if classification, else None
         """
+        # Sample if dataset is too large
+        if len(df) > max_rows:
+            logger.info(f"Sampling {max_rows} rows from {len(df)} total rows for training")
+            df = df.sample(n=max_rows, random_state=42)
+        
         # Separate features and target
         X = df.drop(columns=[target_column])
         y = df[target_column].copy()
@@ -284,10 +514,27 @@ class OptunaAutoML:
         for col in numeric_cols:
             X[col] = X[col].fillna(X[col].median())
         
+        # Handle categorical columns with cardinality limit
+        low_cardinality_cols = []
+        high_cardinality_cols = []
+        
         for col in categorical_cols:
             X[col] = X[col].fillna(X[col].mode().iloc[0] if len(X[col].mode()) > 0 else "MISSING")
-            # One-hot encode
-            X = pd.get_dummies(X, columns=[col], prefix=col, drop_first=True)
+            n_unique = X[col].nunique()
+            if n_unique <= max_onehot_cardinality:
+                low_cardinality_cols.append(col)
+            else:
+                high_cardinality_cols.append(col)
+                logger.info(f"Column '{col}' has {n_unique} unique values - using label encoding instead of one-hot")
+        
+        # One-hot encode low cardinality columns
+        if low_cardinality_cols:
+            X = pd.get_dummies(X, columns=low_cardinality_cols, drop_first=True)
+        
+        # Label encode high cardinality columns
+        for col in high_cardinality_cols:
+            le = LabelEncoder()
+            X[col] = le.fit_transform(X[col].astype(str))
         
         feature_names = X.columns.tolist()
         
@@ -333,10 +580,24 @@ class OptunaAutoML:
             if cancel_event and cancel_event.is_set():
                 raise InterruptedError("Training cancelled by user")
         
+        def get_time_progress() -> int:
+            """Get progress percentage based on elapsed time vs budget"""
+            elapsed = time.time() - start_time
+            # Reserve 10% for loading/preprocessing, 10% for saving
+            # Training takes 80% of progress (from 10% to 90%)
+            if elapsed >= time_budget_seconds:
+                return 90
+            time_pct = (elapsed / time_budget_seconds) * 80  # 80% of bar for training
+            return min(90, int(10 + time_pct))
+        
         def report_progress(pct: int, stage: str, msg: str = ""):
             if progress_callback:
                 progress_callback(pct, stage, msg)
             logger.info(f"[{job_id}] {stage}: {msg} ({pct}%)")
+        
+        def report_time_progress(stage: str, msg: str = ""):
+            """Report progress based on elapsed time"""
+            report_progress(get_time_progress(), stage, msg)
         
         # Load data
         report_progress(5, "loading", f"Loading {dataset_path}")
@@ -384,25 +645,30 @@ class OptunaAutoML:
             scoring = "neg_mean_squared_error"
             direction = "maximize"  # neg_mse, so maximize
         
-        # Train models
+        # Train models - with time-based progress
         results: List[ModelResult] = []
         n_models = len(model_defs)
-        progress_per_model = 70 // n_models  # 15% to 85% for training
         
         for i, (model_name, model_def) in enumerate(model_defs.items()):
             check_cancelled()
             
-            # Check time budget
+            # Check time budget - strict enforcement
             elapsed = time.time() - start_time
-            if elapsed > time_budget_seconds:
-                logger.warning(f"[{job_id}] Time budget exceeded, stopping")
+            if elapsed >= time_budget_seconds:
+                logger.warning(f"[{job_id}] Time budget of {time_budget_minutes}min reached, stopping training")
                 break
             
             remaining_time = time_budget_seconds - elapsed
+            # Give each remaining model equal share of remaining time
             model_time_budget = min(remaining_time / (n_models - i), remaining_time)
             
-            base_progress = 15 + i * progress_per_model
-            report_progress(base_progress, "training", f"Training {model_name}")
+            # Skip if less than 5 seconds remaining
+            if model_time_budget < 5:
+                logger.info(f"[{job_id}] Skipping {model_name} - insufficient time remaining")
+                continue
+            
+            # Report time-based progress
+            report_time_progress("training", f"Training {model_name} ({i+1}/{n_models})")
             
             try:
                 result = self._train_single_model(
@@ -420,8 +686,8 @@ class OptunaAutoML:
                 )
                 results.append(result)
                 
-                report_progress(
-                    base_progress + progress_per_model - 5, 
+                # Report time-based progress with model result
+                report_time_progress(
                     "trained", 
                     f"{model_name}: score={result.cv_scores[-1]:.4f}"
                 )
@@ -441,7 +707,7 @@ class OptunaAutoML:
             result.rank = rank
         
         # Save models
-        report_progress(85, "saving", "Saving trained models")
+        report_progress(92, "saving", "Saving trained models")
         output_dir = output_dir or Path("./trained_models") / job_id
         output_dir.mkdir(parents=True, exist_ok=True)
         

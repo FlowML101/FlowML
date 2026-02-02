@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Server, Activity, Pause, RotateCcw, Loader2 } from 'lucide-react'
-import { workersApi, statsApi } from '@/lib/api'
+import { workersApi } from '@/lib/api'
 
 interface WorkerData {
   id: string
@@ -27,20 +27,15 @@ interface WorkerData {
 export function WorkersManager() {
   const [workers, setWorkers] = useState<WorkerData[]>([])
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<any>(null)
 
   useEffect(() => {
     const fetchWorkers = async () => {
       try {
-        const [master, available] = await Promise.all([
-          workersApi.getMaster(),
-          workersApi.getAvailable()
-        ])
+        const master = await workersApi.getMaster()
         
         // Master is always first
         const allWorkers: WorkerData[] = [master as WorkerData]
         setWorkers(allWorkers)
-        setStats(available)
       } catch (err) {
         console.error('Failed to fetch workers:', err)
       } finally {
@@ -78,7 +73,7 @@ export function WorkersManager() {
         </div>
       </div>
 
-      {/* Cluster Stats */}
+      {/* Cluster Stats - Computed from real worker data */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/15">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative">
@@ -86,19 +81,35 @@ export function WorkersManager() {
             <Server className="w-4 h-4 text-zinc-400" />
           </CardHeader>
           <CardContent className="relative">
-            <div className="text-2xl font-bold">4</div>
-            <p className="text-xs text-muted-foreground">3 online, 1 offline</p>
+            {loading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{totalWorkers}</div>
+                <p className="text-xs text-muted-foreground">{onlineWorkers} online, {totalWorkers - onlineWorkers} offline</p>
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/15">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative">
-            <CardTitle className="text-sm font-medium">Total VRAM</CardTitle>
+            <CardTitle className="text-sm font-medium">Total RAM</CardTitle>
             <Activity className="w-4 h-4 text-purple-400" />
           </CardHeader>
           <CardContent className="relative">
-            <div className="text-2xl font-bold">18 GB</div>
-            <p className="text-xs text-muted-foreground">7.1 GB in use</p>
+            {loading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">
+                  {workers.reduce((acc, w) => acc + (w.ram_total_gb || 0), 0).toFixed(1)} GB
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {workers.reduce((acc, w) => acc + (w.ram_used_gb || 0), 0).toFixed(1)} GB in use
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -108,19 +119,39 @@ export function WorkersManager() {
             <Activity className="w-4 h-4 text-blue-400" />
           </CardHeader>
           <CardContent className="relative">
-            <div className="text-2xl font-bold">49%</div>
-            <p className="text-xs text-muted-foreground">Across active nodes</p>
+            {loading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">
+                  {onlineWorkers > 0 
+                    ? (workers.filter(w => w.status === 'online').reduce((acc, w) => acc + (w.cpu_percent || 0), 0) / onlineWorkers).toFixed(0)
+                    : 0}%
+                </div>
+                <p className="text-xs text-muted-foreground">Across active nodes</p>
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-green-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-green-500/15">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative">
-            <CardTitle className="text-sm font-medium">Network Latency</CardTitle>
+            <CardTitle className="text-sm font-medium">Total VRAM</CardTitle>
             <Activity className="w-4 h-4 text-green-400" />
           </CardHeader>
           <CardContent className="relative">
-            <div className="text-2xl font-bold">12ms</div>
-            <p className="text-xs text-muted-foreground">Mesh average</p>
+            {loading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">
+                  {workers.reduce((acc, w) => acc + (w.vram_total_gb || 0), 0).toFixed(1)} GB
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {workers.some(w => w.gpu_name) ? workers.find(w => w.gpu_name)?.gpu_name : 'No GPU detected'}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

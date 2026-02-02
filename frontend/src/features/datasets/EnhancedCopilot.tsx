@@ -5,9 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { 
   Bot, Send, Sparkles, Code2, Copy, Check, Zap, 
-  TrendingUp, AlertCircle, Lightbulb 
+  TrendingUp, AlertCircle, Lightbulb, WifiOff, RefreshCw
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -18,46 +20,20 @@ interface Message {
   timestamp: Date
 }
 
-const mockSuggestions = [
-  "Handle missing values in Age column",
-  "Create feature: FamilySize = SibSp + Parch",
-  "Encode categorical variables",
-  "Normalize numeric features"
-]
-
-const mockCodeSamples = {
-  fillna: `# Fill missing Age values with median
-df['Age'].fillna(df['Age'].median(), inplace=True)
-
-# Verify changes
-print(f"Missing values: {df['Age'].isnull().sum()}")`,
-  
-  feature: `# Create new feature: FamilySize
-df['FamilySize'] = df['SibSp'] + df['Parch'] + 1
-
-# Create IsAlone binary feature  
-df['IsAlone'] = (df['FamilySize'] == 1).astype(int)`,
-
-  encode: `# One-hot encode categorical variables
-df = pd.get_dummies(df, columns=['Sex', 'Embarked'], drop_first=True)
-
-# Label encode Pclass
-df['Pclass'] = df['Pclass'].map({1: 0, 2: 1, 3: 2})`,
+interface LLMStatus {
+  available: boolean
+  url: string
+  default_model: string
+  models: string[]
 }
 
 export function EnhancedCopilot() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'assistant',
-      content: "👋 I'm your AI Data Assistant. I can help you clean data, engineer features, and explain insights. What would you like to know?",
-      suggestions: mockSuggestions,
-      timestamp: new Date()
-    },
-  ])
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [copiedCode, setCopiedCode] = useState(false)
-  const [tokenUsage, setTokenUsage] = useState({ used: 1420, total: 100000 })
+  const [llmStatus, setLlmStatus] = useState<LLMStatus | null>(null)
+  const [isCheckingStatus, setIsCheckingStatus] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -66,9 +42,41 @@ export function EnhancedCopilot() {
 
   useEffect(scrollToBottom, [messages])
 
-  const handleSend = (text?: string) => {
+  // Check LLM status on mount
+  useEffect(() => {
+    checkLLMStatus()
+  }, [])
+
+  const checkLLMStatus = async () => {
+    setIsCheckingStatus(true)
+    try {
+      const response = await fetch(`${API_BASE}/llm/status`)
+      if (response.ok) {
+        const status: LLMStatus = await response.json()
+        setLlmStatus(status)
+        
+        if (status.available) {
+          // Add welcome message when LLM is available
+          setMessages([{
+            role: 'assistant',
+            content: `👋 I'm your AI Data Assistant powered by ${status.default_model}. I can help you clean data, engineer features, and explain model results. Select a dataset to get started!`,
+            suggestions: ['Suggest data cleaning', 'Explain results', 'Feature engineering tips'],
+            timestamp: new Date()
+          }])
+        }
+      } else {
+        setLlmStatus({ available: false, url: '', default_model: '', models: [] })
+      }
+    } catch {
+      setLlmStatus({ available: false, url: '', default_model: '', models: [] })
+    } finally {
+      setIsCheckingStatus(false)
+    }
+  }
+
+  const handleSend = async (text?: string) => {
     const messageText = text || input
-    if (!messageText.trim()) return
+    if (!messageText.trim() || !llmStatus?.available) return
 
     const userMessage: Message = {
       role: 'user',
@@ -80,37 +88,28 @@ export function EnhancedCopilot() {
     setInput('')
     setIsTyping(true)
 
-    // Simulate AI response
-    setTimeout(() => {
-      const responses = [
-        {
-          content: "I analyzed the Age column. There are 177 missing values (19.9% of data). The distribution is right-skewed with median=28 and mean=29.7 years.",
-          code: mockCodeSamples.fillna,
-          codeLanguage: 'python'
-        },
-        {
-          content: "Creating a FamilySize feature is a great idea! This combines SibSp and Parch to capture family dynamics, which historically correlated with survival rates.",
-          code: mockCodeSamples.feature,
-          codeLanguage: 'python'
-        },
-        {
-          content: "I'll help you encode the categorical variables. Sex and Embarked can be one-hot encoded, while Pclass works well as ordinal.",
-          code: mockCodeSamples.encode,
-          codeLanguage: 'python'
-        }
-      ]
-
-      const response = responses[Math.floor(Math.random() * responses.length)]
+    try {
+      // For now, we show that LLM is connected but the chat feature
+      // requires a dataset context. In a full implementation, this would
+      // call specific LLM endpoints based on the query type.
       
-      setMessages(prev => [...prev, {
-        ...response,
+      const assistantMessage: Message = {
         role: 'assistant',
-        timestamp: new Date(),
-        suggestions: ['Apply this code', 'Explain more', 'Show visualization', 'Alternative approach']
+        content: `I understood your request: "${messageText}". To provide specific analysis, please:\n\n1. **Upload a dataset** in the Data Studio\n2. **Select it** from the dropdown above\n3. **Ask me** about that dataset\n\nI can then provide real insights using the ${llmStatus.default_model} model.`,
+        suggestions: ['How do I upload data?', 'What can you analyze?'],
+        timestamp: new Date()
+      }
+
+      setMessages(prev => [...prev, assistantMessage])
+    } catch {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: '❌ Sorry, I encountered an error processing your request. Please try again.',
+        timestamp: new Date()
       }])
+    } finally {
       setIsTyping(false)
-      setTokenUsage(prev => ({ ...prev, used: prev.used + Math.floor(Math.random() * 200) + 100 }))
-    }, 1500)
+    }
   }
 
   const copyCode = (code: string) => {
@@ -119,10 +118,77 @@ export function EnhancedCopilot() {
     setTimeout(() => setCopiedCode(false), 2000)
   }
 
-  const tokenPercentage = (tokenUsage.used / tokenUsage.total) * 100
+  // Loading state
+  if (isCheckingStatus) {
+    return (
+      <Card className="flex flex-col border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 h-full">
+        <CardHeader className="border-b border-border">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 via-blue-600 to-pink-600 flex items-center justify-center shadow-lg animate-pulse">
+              <Bot className="w-5 h-5 text-white" />
+            </div>
+            <span>Connecting to AI...</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex-1 flex items-center justify-center">
+          <RefreshCw className="w-8 h-8 text-muted-foreground animate-spin" />
+        </CardContent>
+      </Card>
+    )
+  }
 
+  // LLM not available state
+  if (!llmStatus?.available) {
+    return (
+      <Card className="flex flex-col border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 h-full">
+        <CardHeader className="border-b border-border">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <div className="w-9 h-9 rounded-xl bg-zinc-700 flex items-center justify-center shadow-lg">
+              <WifiOff className="w-5 h-5 text-zinc-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                AI Copilot
+                <Badge variant="outline" className="text-xs text-yellow-500 border-yellow-500/30">
+                  Offline
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground font-normal">LLM service not connected</p>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
+          <div className="w-16 h-16 rounded-2xl bg-zinc-800 flex items-center justify-center">
+            <Bot className="w-8 h-8 text-zinc-500" />
+          </div>
+          <div className="text-center space-y-2">
+            <h3 className="font-semibold">Ollama Not Connected</h3>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              To enable AI-powered data analysis, start the Ollama service with a model like <code className="text-purple-400">llama3</code> or <code className="text-purple-400">mistral</code>.
+            </p>
+          </div>
+          <div className="bg-zinc-800/50 rounded-lg p-4 w-full max-w-sm">
+            <p className="text-xs text-muted-foreground mb-2">Run in terminal:</p>
+            <code className="text-xs text-green-400 font-mono">
+              ollama run llama3
+            </code>
+          </div>
+          <Button 
+            onClick={checkLLMStatus}
+            variant="outline"
+            className="mt-2"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Retry Connection
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // LLM available - show chat interface
   return (
-    <Card className="flex flex-col border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-cyan-500/10 before:to-blue-500/10 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12">
+    <Card className="flex flex-col border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-cyan-500/10 before:to-blue-500/10 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12 h-full">
       <CardHeader className="border-b border-border relative pb-4">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -134,24 +200,17 @@ export function EnhancedCopilot() {
                 AI Copilot
                 <Badge variant="secondary" className="text-xs">
                   <Sparkles className="w-3 h-3 mr-1" />
-                  GPT-4
+                  {llmStatus.default_model}
                 </Badge>
               </div>
-              <p className="text-xs text-muted-foreground font-normal">Powered by FlowML Intelligence</p>
+              <p className="text-xs text-muted-foreground font-normal">Connected to Ollama</p>
             </div>
           </CardTitle>
 
-          {/* Token Usage */}
-          <div className="flex flex-col items-end gap-1">
-            <span className="text-xs text-muted-foreground">
-              {tokenUsage.used.toLocaleString()} / {tokenUsage.total.toLocaleString()} tokens
-            </span>
-            <div className="w-32 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-to-r from-purple-600 to-blue-600 transition-all duration-300"
-                style={{ width: `${tokenPercentage}%` }}
-              />
-            </div>
+          {/* Connection status */}
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-xs text-muted-foreground">Online</span>
           </div>
         </div>
       </CardHeader>
@@ -185,7 +244,7 @@ export function EnhancedCopilot() {
                       : 'bg-zinc-800/50 border border-zinc-700/50 text-zinc-100'
                   }`}
                 >
-                  <p className="text-sm leading-relaxed">{message.content}</p>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
                 </div>
 
                 {message.code && (
@@ -261,7 +320,7 @@ export function EnhancedCopilot() {
         {/* Quick Actions */}
         <div className="flex gap-2 overflow-x-auto pb-2">
           <Button
-            onClick={() => handleSend("Explain the missing values")}
+            onClick={() => handleSend("Analyze missing values in my dataset")}
             size="sm"
             variant="outline"
             className="text-xs whitespace-nowrap border-zinc-700 hover:bg-zinc-800"
@@ -270,7 +329,7 @@ export function EnhancedCopilot() {
             Missing Data
           </Button>
           <Button
-            onClick={() => handleSend("Suggest feature engineering")}
+            onClick={() => handleSend("Suggest feature engineering ideas")}
             size="sm"
             variant="outline"
             className="text-xs whitespace-nowrap border-zinc-700 hover:bg-zinc-800"
@@ -279,7 +338,7 @@ export function EnhancedCopilot() {
             Feature Ideas
           </Button>
           <Button
-            onClick={() => handleSend("Show correlation insights")}
+            onClick={() => handleSend("Explain correlation patterns")}
             size="sm"
             variant="outline"
             className="text-xs whitespace-nowrap border-zinc-700 hover:bg-zinc-800"
@@ -300,7 +359,7 @@ export function EnhancedCopilot() {
                 handleSend()
               }
             }}
-            placeholder="Ask anything about your data, or request code..."
+            placeholder="Ask about your data..."
             className="flex-1 bg-zinc-800/50 border-zinc-700 focus:border-purple-500/50"
           />
           <Button 
@@ -313,7 +372,7 @@ export function EnhancedCopilot() {
         </div>
 
         <p className="text-xs text-muted-foreground text-center">
-          Press Enter to send • Shift+Enter for new line
+          Press Enter to send • Connected to {llmStatus.url || 'Ollama'}
         </p>
       </div>
     </Card>

@@ -93,6 +93,22 @@ export const datasetsApi = {
     const response = await fetch(`${API_BASE}/datasets/${id}`, { method: 'DELETE' })
     return handleResponse<void>(response)
   },
+
+  // New visualization endpoints
+  correlation: async (id: string): Promise<{ matrix: Record<string, number | string>[]; columns: string[] }> => {
+    const response = await fetch(`${API_BASE}/datasets/${id}/correlation`)
+    return handleResponse(response)
+  },
+
+  distribution: async (id: string, column: string, bins = 20): Promise<{
+    bins?: number[];
+    counts: number[];
+    categories?: string[];
+    type: 'numeric' | 'categorical'
+  }> => {
+    const response = await fetch(`${API_BASE}/datasets/${id}/distribution/${encodeURIComponent(column)}?bins=${bins}`)
+    return handleResponse(response)
+  },
 }
 
 // ============ Training ============
@@ -163,21 +179,24 @@ export const trainingApi = {
 export interface TrainedModel {
   id: string
   job_id: string
-  algorithm: string
-  metrics: {
-    accuracy?: number
-    f1_score?: number
-    precision?: number
-    recall?: number
-    auc?: number
-    rmse?: number
-    mae?: number
-    r2?: number
-    mse?: number
-    training_time?: number
-  }
-  file_path: string
+  dataset_id: string
+  name: string  // Model algorithm name (e.g., "random_forest", "xgboost")
+  // Metrics are at top level, not nested
+  accuracy?: number
+  f1_score?: number
+  precision?: number
+  recall?: number
+  auc?: number
+  rmse?: number
+  mae?: number
+  r2?: number
+  training_time: number
+  rank: number
+  model_path?: string
+  model_size?: number
   created_at: string
+  hyperparameters?: string
+  feature_importance?: string
 }
 
 export interface PredictionRequest {
@@ -225,6 +244,54 @@ export const resultsApi = {
   listAllModels: async (): Promise<TrainedModel[]> => {
     const response = await fetch(`${API_BASE}/results/models`)
     return handleResponse<TrainedModel[]>(response)
+  },
+
+  // New analysis endpoints
+  featureImportance: async (modelId: string): Promise<{
+    model_id: string;
+    model_name: string;
+    features: { feature: string; importance: number; rank: number }[];
+  }> => {
+    const response = await fetch(`${API_BASE}/results/model/${modelId}/feature-importance`)
+    return handleResponse(response)
+  },
+
+  confusionMatrix: async (modelId: string): Promise<{
+    model_id: string;
+    model_name: string;
+    matrix: number[][] | null;
+    labels?: string[];
+  }> => {
+    const response = await fetch(`${API_BASE}/results/model/${modelId}/confusion-matrix`)
+    return handleResponse(response)
+  },
+
+  compareModels: async (modelIds: string[]): Promise<{
+    models: Array<{
+      id: string;
+      name: string;
+      metrics: Record<string, number | null>;
+      training_time: number;
+      rank: number;
+    }>;
+    metrics_ranking: Record<string, { best_model_id: string; best_value: number }>;
+    recommendation: string | null;
+  }> => {
+    const response = await fetch(`${API_BASE}/results/compare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(modelIds),
+    })
+    return handleResponse(response)
+  },
+
+  hyperparameters: async (modelId: string): Promise<{
+    model_id: string;
+    model_name: string;
+    hyperparameters: Record<string, unknown>;
+  }> => {
+    const response = await fetch(`${API_BASE}/results/model/${modelId}/hyperparameters`)
+    return handleResponse(response)
   },
 }
 

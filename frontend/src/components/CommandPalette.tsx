@@ -17,14 +17,14 @@ import {
 } from 'lucide-react'
 
 const pages = [
-  { name: 'Dashboard', path: '/app', icon: LayoutDashboard, keywords: ['home', 'overview'] },
-  { name: 'Data Studio', path: '/app/data', icon: Database, keywords: ['upload', 'dataset', 'csv'] },
-  { name: 'Training', path: '/app/train', icon: Zap, keywords: ['config', 'automl', 'train'] },
-  { name: 'Live Monitor', path: '/app/running', icon: Activity, keywords: ['progress', 'running', 'live'] },
-  { name: 'Workers', path: '/app/workers', icon: Server, keywords: ['nodes', 'cluster', 'mesh'] },
-  { name: 'Results', path: '/app/results', icon: Trophy, keywords: ['leaderboard', 'models', 'metrics'] },
-  { name: 'Model Lab', path: '/app/inference', icon: FlaskConical, keywords: ['inference', 'predict', 'test'] },
-  { name: 'Logs', path: '/app/logs', icon: ScrollText, keywords: ['history', 'audit', 'debug'] },
+  { name: 'Dashboard', path: '/', icon: LayoutDashboard, keywords: ['home', 'overview'] },
+  { name: 'Data Studio', path: '/data', icon: Database, keywords: ['upload', 'dataset', 'csv'] },
+  { name: 'Training', path: '/train', icon: Zap, keywords: ['config', 'automl', 'train'] },
+  { name: 'Live Monitor', path: '/running', icon: Activity, keywords: ['progress', 'running', 'live'] },
+  { name: 'Workers', path: '/workers', icon: Server, keywords: ['nodes', 'cluster', 'mesh'] },
+  { name: 'Results', path: '/results', icon: Trophy, keywords: ['leaderboard', 'models', 'metrics'] },
+  { name: 'Model Lab', path: '/inference', icon: FlaskConical, keywords: ['inference', 'predict', 'test'] },
+  { name: 'Logs', path: '/logs', icon: ScrollText, keywords: ['history', 'audit', 'debug'] },
 ]
 
 export function CommandPalette() {

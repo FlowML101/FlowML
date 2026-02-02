@@ -1,10 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { ThemeProvider } from '@/contexts/ThemeContext'
+import { DatasetProvider } from '@/contexts/DatasetContext'
 import { CommandPalette } from '@/components/CommandPalette'
-import { MarketingLayout } from '@/layouts/MarketingLayout'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
-import { LandingPage } from '@/pages/LandingPage'
 import { DashboardHome } from '@/pages/DashboardHome'
 import { DataStudio } from '@/pages/DataStudio'
 import { TrainingConfig } from '@/pages/TrainingConfig'
@@ -13,10 +12,8 @@ import { WorkersManager } from '@/pages/WorkersManager'
 import { Results } from '@/pages/Results'
 import { InferencePage } from '@/pages/InferencePage'
 import { ModelComparison } from '@/pages/ModelComparison'
-import { ExperimentHistory } from '@/pages/ExperimentHistory'
-import { BatchInference } from '@/pages/BatchInference'
-import { ResourceScheduler } from '@/pages/ResourceScheduler'
 import { AdvancedDataViz } from '@/pages/AdvancedDataViz'
+import { DeployModel } from '@/pages/DeployModel'
 import { LogsPage } from '@/pages/LogsPage'
 import { useSystemEvents } from '@/hooks/useSystemEvents'
 
@@ -25,17 +22,13 @@ function App() {
 
   return (
     <ThemeProvider>
+      <DatasetProvider>
       <BrowserRouter>
         <Toaster position="top-right" richColors />
         <CommandPalette />
         <Routes>
-        {/* Marketing Zone */}
-        <Route element={<MarketingLayout />}>
-          <Route path="/" element={<LandingPage />} />
-        </Route>
-
-        {/* Dashboard/App Zone */}
-        <Route path="/app" element={<DashboardLayout />}>
+        {/* App Zone - No landing page, straight to dashboard */}
+        <Route path="/" element={<DashboardLayout />}>
           <Route index element={<DashboardHome />} />
           <Route path="data" element={<DataStudio />} />
           <Route path="train" element={<TrainingConfig />} />
@@ -44,17 +37,19 @@ function App() {
           <Route path="results" element={<Results />} />
           <Route path="inference" element={<InferencePage />} />
           <Route path="compare" element={<ModelComparison />} />
-          <Route path="history" element={<ExperimentHistory />} />
-          <Route path="deploy" element={<BatchInference />} />
-          <Route path="schedule" element={<ResourceScheduler />} />
+          <Route path="deploy" element={<DeployModel />} />
           <Route path="visualizations" element={<AdvancedDataViz />} />
           <Route path="logs" element={<LogsPage />} />
         </Route>
 
+        {/* Legacy /app routes redirect to root */}
+        <Route path="/app/*" element={<Navigate to="/" replace />} />
+        
         {/* Catch all - redirect to home */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </BrowserRouter>
+      </DatasetProvider>
     </ThemeProvider>
   )
 }

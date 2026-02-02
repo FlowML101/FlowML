@@ -85,6 +85,12 @@ async def start_training(
     await session.commit()
     await session.refresh(job)
     
+    # Get dataset path
+    result2 = await session.execute(
+        select(Dataset).where(Dataset.id == job_data.dataset_id)
+    )
+    dataset = result2.scalar_one()
+    
     # Start training in background
     cancel_event = threading.Event()
     _running_jobs[job.id] = cancel_event
@@ -113,6 +119,31 @@ async def run_training_job(
 ):
     """Background task to run Optuna-based AutoML training"""
     import asyncio
+    
+    # Helper to update job progress with fresh session
+    async def update_job_progress(progress: int, stage: str, message: str):
+        """Update job progress in database with a fresh session"""
+        try:
+            async with get_session_context() as update_session:
+                result = await update_session.execute(select(Job).where(Job.id == job_id))
+                job_to_update = result.scalar_one_or_none()
+                if job_to_update:
+                    job_to_update.progress = progress
+                    job_to_update.current_model = message
+                    await update_session.commit()
+            
+            # Broadcast via WebSocket
+            await manager.broadcast({
+                "type": "job_update",
+                "payload": {
+                    "jobId": job_id, 
+                    "progress": progress,
+                    "stage": stage,
+                    "message": message
+                }
+            })
+        except Exception as e:
+            logger.error(f"Failed to update progress for job {job_id}: {e}")
     
     async with get_session_context() as session:
         # Get job
@@ -143,31 +174,23 @@ async def run_training_job(
                 await session.commit()
                 return
             
-            # Progress callback that updates job and broadcasts
-            async def update_progress(progress: int, stage: str, message: str):
-                job.progress = progress
-                job.current_model = message
-                await session.commit()
-                await manager.broadcast({
-                    "type": "job_update",
-                    "payload": {
-                        "jobId": job_id, 
-                        "progress": progress,
-                        "stage": stage,
-                        "message": message
-                    }
-                })
+            # Capture the event loop before running in executor
+            main_loop = asyncio.get_running_loop()
             
             # Sync progress callback for Optuna (runs in thread)
             def progress_callback(progress: int, stage: str, message: str):
-                asyncio.run_coroutine_threadsafe(
-                    update_progress(progress, stage, message),
-                    asyncio.get_event_loop()
+                future = asyncio.run_coroutine_threadsafe(
+                    update_job_progress(progress, stage, message),
+                    main_loop
                 )
+                # Don't block, but log any errors
+                try:
+                    future.result(timeout=1.0)  # Wait briefly for completion
+                except Exception as e:
+                    logger.warning(f"Progress update async: {e}")
             
             # Run Optuna AutoML in executor (CPU-bound)
-            loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(
+            results = await main_loop.run_in_executor(
                 None,
                 lambda: optuna_automl.train(
                     dataset_path=dataset_path,
@@ -256,6 +279,30 @@ async def run_training_job(
             _running_jobs.pop(job_id, None)
 
 
+@router.post("/cleanup-stale")
+async def cleanup_stale_jobs(
+    session: AsyncSession = Depends(get_session)
+):
+    """Mark stale running/pending jobs as failed (useful after server restart)"""
+    result = await session.execute(
+        select(Job).where(Job.status.in_([JobStatus.RUNNING, JobStatus.PENDING]))
+    )
+    stale_jobs = result.scalars().all()
+    
+    cleaned = []
+    for job in stale_jobs:
+        # Check if job is actually running (has a cancel_event)
+        if job.id not in _running_jobs:
+            job.status = JobStatus.FAILED
+            job.error_message = "Job interrupted - no active training process"
+            job.completed_at = datetime.utcnow()
+            cleaned.append(job.id)
+            logger.info(f"Cleaned up stale job: {job.id}")
+    
+    await session.commit()
+    return {"cleaned_jobs": cleaned, "count": len(cleaned)}
+
+
 @router.get("", response_model=list[JobRead])
 async def list_jobs(
     session: AsyncSession = Depends(get_session),
@@ -337,3 +384,71 @@ async def cancel_job(
     })
     
     return {"status": "cancelled", "id": job_id}
+
+
+async def start_training_internal(
+    dataset_id: str,
+    target_column: str,
+    problem_type: str,
+    time_budget: int,
+    job_name: str,
+    model_types: list | None,
+    session: AsyncSession
+) -> Job:
+    """
+    Internal function to start training - used by scheduled jobs.
+    Does not use BackgroundTasks (caller manages background execution).
+    """
+    from asyncio import get_event_loop
+    
+    # Verify dataset exists
+    result = await session.execute(
+        select(Dataset).where(Dataset.id == dataset_id)
+    )
+    dataset = result.scalar_one_or_none()
+    if not dataset:
+        raise not_found("Dataset", dataset_id)
+    
+    # Create job
+    job = Job(
+        name=job_name,
+        dataset_id=dataset_id,
+        target_column=target_column,
+        time_budget=time_budget,
+        model_types=json.dumps(model_types) if model_types else None,
+        problem_type=problem_type,
+        status=JobStatus.PENDING
+    )
+    
+    session.add(job)
+    await session.commit()
+    await session.refresh(job)
+    
+    # Start training in background thread
+    cancel_event = threading.Event()
+    _running_jobs[job.id] = cancel_event
+    
+    # Use thread to run training
+    import asyncio
+    loop = get_event_loop()
+    loop.run_in_executor(
+        None,
+        lambda: asyncio.run(_run_training_wrapper(
+            job.id, dataset.file_path, target_column, time_budget, problem_type, cancel_event
+        ))
+    )
+    
+    logger.info(f"Started scheduled training job {job.id} for dataset {dataset.name}")
+    return job
+
+
+async def _run_training_wrapper(
+    job_id: str,
+    dataset_path: str,
+    target_column: str,
+    time_budget: int,
+    problem_type: str,
+    cancel_event: threading.Event
+):
+    """Wrapper for running training in executor"""
+    await run_training_job(job_id, dataset_path, target_column, time_budget, problem_type, cancel_event)

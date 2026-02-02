@@ -12,10 +12,8 @@ import {
   Settings,
   User,
   Search,
-  GitBranch,
   BarChart3,
-  Upload,
-  Calendar
+  Rocket
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,33 +21,30 @@ import { NotificationCenter } from '@/components/NotificationCenter'
 import { PageTransition } from '@/components/PageTransition'
 import { ConnectionStatus } from '@/components/ConnectionStatus'
 import { useWebSocket } from '@/hooks/useWebSocket'
-import { useTheme } from '@/contexts/ThemeContext'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
 const navigation = [
   // Overview & Monitoring
-  { name: 'Dashboard', href: '/app', icon: LayoutDashboard },
-  { name: 'Live Monitor', href: '/app/running', icon: Activity },
+  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Live Monitor', href: '/running', icon: Activity },
   
   // Data Pipeline
-  { name: 'Data Studio', href: '/app/data', icon: Database },
-  { name: 'Visualizations', href: '/app/visualizations', icon: BarChart3 },
+  { name: 'Data Studio', href: '/data', icon: Database },
+  { name: 'Visualizations', href: '/visualizations', icon: BarChart3 },
   
   // Training Workflow
-  { name: 'Training', href: '/app/train', icon: Zap },
-  { name: 'Schedule', href: '/app/schedule', icon: Calendar },
-  { name: 'History', href: '/app/history', icon: GitBranch },
+  { name: 'Training', href: '/train', icon: Zap },
   
   // Results & Deployment
-  { name: 'Results', href: '/app/results', icon: Trophy },
-  { name: 'Compare', href: '/app/compare', icon: BarChart3 },
-  { name: 'Model Lab', href: '/app/inference', icon: FlaskConical },
-  { name: 'Deploy', href: '/app/deploy', icon: Upload },
+  { name: 'Results', href: '/results', icon: Trophy },
+  { name: 'Compare', href: '/compare', icon: BarChart3 },
+  { name: 'Model Lab', href: '/inference', icon: FlaskConical },
+  { name: 'Deploy', href: '/deploy', icon: Rocket },
   
   // System Management
-  { name: 'Workers', href: '/app/workers', icon: Server },
-  { name: 'Logs', href: '/app/logs', icon: ScrollText },
+  { name: 'Workers', href: '/workers', icon: Server },
+  { name: 'Logs', href: '/logs', icon: ScrollText },
 ]
 
 export function DashboardLayout() {

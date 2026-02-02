@@ -48,22 +48,36 @@ export function LiveMonitor() {
           }
           setLogs(newLogs)
         } else {
-          // Check for latest completed job
-          const completed = jobs.filter(j => j.status === 'completed').sort((a, b) => 
-            new Date(b.completed_at || 0).getTime() - new Date(a.completed_at || 0).getTime()
+          // Check for most recent job (could be completed, failed, or pending)
+          const recentJob = jobs.sort((a, b) => 
+            new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
           )[0]
-          if (completed) {
-            setActiveJob(completed)
-            setChartData(Array.from({ length: 10 }, (_, i) => ({
-              epoch: i + 1,
-              loss: 0.7 - (i * 0.05),
-              accuracy: 0.5 + (i * 0.04),
-            })))
-            setLogs([
-              `[INFO] Job "${completed.name}" completed`,
-              `[INFO] ${completed.models_completed} models trained`,
-              `[SUCCESS] Training finished successfully`,
-            ])
+          if (recentJob) {
+            setActiveJob(recentJob)
+            if (recentJob.status === 'completed') {
+              setChartData(Array.from({ length: 10 }, (_, i) => ({
+                epoch: i + 1,
+                loss: 0.7 - (i * 0.05),
+                accuracy: 0.5 + (i * 0.04),
+              })))
+              setLogs([
+                `[INFO] Job "${recentJob.name}" completed`,
+                `[INFO] ${recentJob.models_completed} models trained`,
+                `[SUCCESS] Training finished successfully`,
+              ])
+            } else if (recentJob.status === 'failed') {
+              setChartData([])
+              setLogs([
+                `[INFO] Job "${recentJob.name}" started`,
+                `[ERROR] Training failed: ${recentJob.error_message || 'Unknown error'}`,
+              ])
+            } else if (recentJob.status === 'pending') {
+              setChartData([])
+              setLogs([
+                `[INFO] Job "${recentJob.name}" is pending`,
+                `[INFO] Waiting for worker to pick up the job...`,
+              ])
+            }
           }
         }
       } catch (err) {
@@ -109,6 +123,7 @@ export function LiveMonitor() {
   }
 
   const isRunning = activeJob.status === 'running'
+  const isFailed = activeJob.status === 'failed'
   const progress = activeJob.progress || 0
 
   return (
@@ -126,7 +141,7 @@ export function LiveMonitor() {
           <Badge variant="outline" className="text-sm px-4 py-2">
             Model {activeJob.models_completed}/{activeJob.total_models}
           </Badge>
-          <Badge variant="default" className={`text-sm px-4 py-2 ${isRunning ? 'bg-green-600' : 'bg-blue-600'}`}>
+          <Badge variant="default" className={`text-sm px-4 py-2 ${isRunning ? 'bg-green-600' : isFailed ? 'bg-red-600' : 'bg-blue-600'}`}>
             {isRunning && <div className="w-2 h-2 bg-white rounded-full animate-pulse mr-2"></div>}
             {activeJob.status}
           </Badge>

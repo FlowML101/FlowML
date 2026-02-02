@@ -1,11 +1,12 @@
 """
 Worker Capability Probing
-Detects hardware (CPU, RAM, GPU, VRAM) and software (Python, ML libs)
+Detects hardware (CPU, RAM, GPU, VRAM), software (Python, ML libs), and network (Tailscale)
 """
 import os
 import sys
 import platform
 import socket
+import subprocess
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List
 from datetime import datetime
@@ -24,6 +25,16 @@ class GPUInfo:
     vram_free_gb: float
     cuda_version: Optional[str] = None
     driver_version: Optional[str] = None
+
+
+@dataclass
+class TailscaleInfo:
+    """Tailscale network information"""
+    installed: bool = False
+    connected: bool = False
+    tailscale_ip: Optional[str] = None
+    hostname: Optional[str] = None
+    tailnet: Optional[str] = None
 
 
 @dataclass
@@ -47,6 +58,9 @@ class WorkerCapabilities:
     gpus: List[GPUInfo] = field(default_factory=list)
     total_vram_gb: float = 0.0
     cuda_available: bool = False
+    
+    # Network - Tailscale
+    tailscale: Optional[TailscaleInfo] = None
     
     # Software
     python_version: str = ""
@@ -74,7 +88,16 @@ class WorkerCapabilities:
         data = asdict(self)
         # Convert GPUInfo objects
         data["gpus"] = [asdict(gpu) if isinstance(gpu, GPUInfo) else gpu for gpu in self.gpus]
+        # Convert TailscaleInfo if present
+        if self.tailscale:
+            data["tailscale"] = asdict(self.tailscale) if isinstance(self.tailscale, TailscaleInfo) else self.tailscale
         return data
+    
+    def get_best_ip(self) -> str:
+        """Get the best IP address for this worker (Tailscale preferred)"""
+        if self.tailscale and self.tailscale.connected and self.tailscale.tailscale_ip:
+            return self.tailscale.tailscale_ip
+        return self.ip_address
     
     def get_queues(self) -> List[str]:
         """Determine which task queues this worker should subscribe to"""
@@ -185,6 +208,50 @@ def _get_ip_address() -> str:
         return "127.0.0.1"
 
 
+def _get_tailscale_info() -> TailscaleInfo:
+    """Probe Tailscale installation and connection status"""
+    info = TailscaleInfo()
+    
+    try:
+        # Check if tailscale CLI is available
+        result = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        if result.returncode != 0:
+            return info
+        
+        info.installed = True
+        data = json.loads(result.stdout)
+        
+        # Check if connected
+        info.connected = data.get("BackendState") == "Running"
+        
+        if "Self" in data:
+            self_info = data["Self"]
+            info.hostname = self_info.get("HostName")
+            ips = self_info.get("TailscaleIPs", [])
+            if ips:
+                info.tailscale_ip = ips[0]  # IPv4
+        
+        if "CurrentTailnet" in data:
+            info.tailnet = data["CurrentTailnet"].get("Name")
+            
+    except FileNotFoundError:
+        logger.debug("Tailscale not installed")
+    except subprocess.TimeoutExpired:
+        logger.debug("Tailscale status timeout")
+    except json.JSONDecodeError:
+        logger.debug("Failed to parse Tailscale status")
+    except Exception as e:
+        logger.debug(f"Tailscale probe failed: {e}")
+    
+    return info
+
+
 def probe_capabilities(worker_id: Optional[str] = None) -> WorkerCapabilities:
     """
     Probe all hardware and software capabilities of this machine.
@@ -216,6 +283,9 @@ def probe_capabilities(worker_id: Optional[str] = None) -> WorkerCapabilities:
     # PyTorch
     torch_version, torch_cuda = _get_torch_info()
     
+    # Tailscale
+    tailscale_info = _get_tailscale_info()
+    
     # Build capabilities object
     caps = WorkerCapabilities(
         worker_id=worker_id,
@@ -231,6 +301,7 @@ def probe_capabilities(worker_id: Optional[str] = None) -> WorkerCapabilities:
         gpus=gpus,
         total_vram_gb=total_vram,
         cuda_available=cuda_available or torch_cuda,
+        tailscale=tailscale_info,
         python_version=platform.python_version(),
         os_name=platform.system(),
         os_version=platform.release(),
@@ -247,9 +318,13 @@ def probe_capabilities(worker_id: Optional[str] = None) -> WorkerCapabilities:
     # Set tags based on capabilities
     caps.tags = caps.get_queues()
     
+    # Log summary
+    ts_status = "connected" if tailscale_info.connected else "not connected"
     logger.info(f"Worker {caps.worker_id}: {caps.cpu_count} CPUs, {caps.total_ram_gb}GB RAM, "
-                f"{caps.gpu_count} GPUs ({caps.total_vram_gb}GB VRAM)")
+                f"{caps.gpu_count} GPUs ({caps.total_vram_gb}GB VRAM), Tailscale: {ts_status}")
     logger.info(f"Queues: {caps.tags}")
+    if tailscale_info.connected:
+        logger.info(f"Tailscale IP: {tailscale_info.tailscale_ip} @ {tailscale_info.tailnet}")
     
     return caps
 

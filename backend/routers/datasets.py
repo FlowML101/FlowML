@@ -1,6 +1,6 @@
 """
 Dataset routes - upload, list, preview, stats
-Optimized with proper validation, caching, and error handling
+Supports multiple formats: CSV, Excel, Parquet, JSON, Feather
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,10 +18,11 @@ from database import get_session
 from config import settings
 from models.dataset import Dataset, DatasetRead, DatasetPreview, DatasetStats
 from exceptions import not_found, bad_request, file_too_large, invalid_file_type
+from services.data_formats import DataReader, ReadOptions, DataFormat, EXTENSION_MAP
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
-# Thread pool for CPU-bound Polars operations
+# Thread pool for CPU-bound operations
 _executor = ThreadPoolExecutor(max_workers=4)
 
 
@@ -34,9 +35,9 @@ def _validate_file(filename: str, file_size: int) -> None:
         raise file_too_large(settings.MAX_UPLOAD_SIZE_MB)
 
 
-def _read_csv_sync(file_path: Path) -> pl.DataFrame:
-    """Read CSV in thread pool (CPU-bound)"""
-    return pl.read_csv(file_path)
+def _read_data_sync(file_path: Path) -> pl.DataFrame:
+    """Read data file in thread pool (CPU-bound) - supports multiple formats"""
+    return DataReader.read(file_path)
 
 
 @router.post("/upload", response_model=DatasetRead)
@@ -69,14 +70,14 @@ async def upload_dataset(
     with open(file_path, "wb") as f:
         f.write(content)
     
-    # Analyze with Polars in thread pool (non-blocking)
+    # Analyze with Polars in thread pool (non-blocking) - supports multiple formats
     loop = asyncio.get_event_loop()
     try:
-        df = await loop.run_in_executor(_executor, _read_csv_sync, file_path)
+        df = await loop.run_in_executor(_executor, _read_data_sync, file_path)
     except Exception as e:
         file_path.unlink()  # Clean up
-        logger.error(f"Failed to parse CSV: {e}")
-        raise bad_request(f"Failed to parse CSV: {str(e)}")
+        logger.error(f"Failed to parse file: {e}")
+        raise bad_request(f"Failed to parse file: {str(e)}")
     
     # Extract metadata
     columns = df.columns
@@ -134,8 +135,8 @@ async def get_dataset(
 
 
 def _get_preview_sync(file_path: str, rows: int) -> tuple[list, list, dict]:
-    """Get preview data in thread pool"""
-    df = pl.read_csv(file_path)
+    """Get preview data in thread pool - supports multiple formats"""
+    df = DataReader.read(file_path, ReadOptions(sample_rows=rows + 10))
     preview_df = df.head(rows)
     return df.columns, preview_df.to_dicts(), {col: str(df[col].dtype) for col in df.columns}
 
@@ -175,8 +176,8 @@ async def preview_dataset(
 
 
 def _get_stats_sync(file_path: str) -> list[dict]:
-    """Calculate column statistics in thread pool"""
-    df = pl.read_csv(file_path)
+    """Calculate column statistics in thread pool - supports multiple formats"""
+    df = DataReader.read(file_path)
     stats = []
     
     for col in df.columns:
@@ -231,6 +232,116 @@ async def get_dataset_stats(
     stats_dicts = await loop.run_in_executor(_executor, _get_stats_sync, dataset.file_path)
     
     return [DatasetStats(**s) for s in stats_dicts]
+
+
+def _get_correlation_sync(file_path: str) -> dict:
+    """Calculate correlation matrix for numeric columns"""
+    df = DataReader.read(file_path)
+    
+    # Get only numeric columns
+    numeric_cols = [col for col in df.columns 
+                   if df[col].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32, pl.Int16, pl.Int8]]
+    
+    if len(numeric_cols) < 2:
+        return {"matrix": [], "columns": []}
+    
+    # Limit to first 15 numeric columns for performance
+    numeric_cols = numeric_cols[:15]
+    numeric_df = df.select(numeric_cols)
+    
+    # Calculate correlation matrix using Polars
+    correlations = []
+    for col1 in numeric_cols:
+        row = {"feature": col1}
+        for col2 in numeric_cols:
+            # Pearson correlation
+            corr = numeric_df[col1].pearson_corr(numeric_df[col2])
+            row[col2] = round(corr, 3) if corr is not None else 0.0
+        correlations.append(row)
+    
+    return {"matrix": correlations, "columns": numeric_cols}
+
+
+@router.get("/{dataset_id}/correlation")
+async def get_correlation_matrix(
+    dataset_id: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """Get correlation matrix for numeric columns in a dataset"""
+    result = await session.execute(
+        select(Dataset).where(Dataset.id == dataset_id)
+    )
+    dataset = result.scalar_one_or_none()
+    if not dataset:
+        raise not_found("Dataset", dataset_id)
+    
+    loop = asyncio.get_event_loop()
+    correlation_data = await loop.run_in_executor(_executor, _get_correlation_sync, dataset.file_path)
+    
+    return correlation_data
+
+
+def _get_distribution_sync(file_path: str, column: str, bins: int = 20) -> dict:
+    """Get distribution/histogram data for a column"""
+    df = DataReader.read(file_path)
+    
+    if column not in df.columns:
+        return {"error": f"Column {column} not found"}
+    
+    col_data = df[column].drop_nulls()
+    
+    # For numeric columns - create histogram
+    if col_data.dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32, pl.Int16, pl.Int8]:
+        min_val = float(col_data.min())
+        max_val = float(col_data.max())
+        
+        if min_val == max_val:
+            return {"bins": [min_val], "counts": [len(col_data)], "type": "numeric"}
+        
+        bin_width = (max_val - min_val) / bins
+        bin_edges = [min_val + i * bin_width for i in range(bins + 1)]
+        
+        counts = []
+        for i in range(bins):
+            lower = bin_edges[i]
+            upper = bin_edges[i + 1]
+            if i == bins - 1:  # Include max in last bin
+                count = col_data.filter((col_data >= lower) & (col_data <= upper)).len()
+            else:
+                count = col_data.filter((col_data >= lower) & (col_data < upper)).len()
+            counts.append(count)
+        
+        return {"bins": bin_edges[:-1], "counts": counts, "type": "numeric"}
+    
+    # For categorical - value counts
+    else:
+        value_counts = col_data.value_counts().sort("count", descending=True).head(bins)
+        return {
+            "categories": value_counts[column].to_list(),
+            "counts": value_counts["count"].to_list(),
+            "type": "categorical"
+        }
+
+
+@router.get("/{dataset_id}/distribution/{column}")
+async def get_column_distribution(
+    dataset_id: str,
+    column: str,
+    bins: int = 20,
+    session: AsyncSession = Depends(get_session)
+):
+    """Get distribution/histogram data for a specific column"""
+    result = await session.execute(
+        select(Dataset).where(Dataset.id == dataset_id)
+    )
+    dataset = result.scalar_one_or_none()
+    if not dataset:
+        raise not_found("Dataset", dataset_id)
+    
+    loop = asyncio.get_event_loop()
+    distribution = await loop.run_in_executor(_executor, _get_distribution_sync, dataset.file_path, column, bins)
+    
+    return distribution
 
 
 @router.delete("/{dataset_id}")

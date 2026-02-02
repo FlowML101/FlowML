@@ -1,27 +1,154 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
-import { Zap, Network, Play, Settings2 } from 'lucide-react'
+import { Zap, Network, Play, Settings2, Loader2, AlertCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { useDataset } from '@/contexts/DatasetContext'
+import { trainingApi, workersApi } from '@/lib/api'
+import { toast } from 'sonner'
 
 export function TrainingConfig() {
   const navigate = useNavigate()
-  const [targetColumn, setTargetColumn] = useState('Survived')
+  const { selectedDataset, previewData, datasets, isLoadingDatasets } = useDataset()
+  
+  const [targetColumn, setTargetColumn] = useState('')
   const [timeBudget, setTimeBudget] = useState([15])
+  const [selectedModels, setSelectedModels] = useState<string[]>(['xgboost', 'random_forest', 'lightgbm', 'gradient_boosting', 'logistic_regression', 'knn', 'extra_trees'])
+  const [isStarting, setIsStarting] = useState(false)
+  const [workerCount, setWorkerCount] = useState(0)
 
-  const handleStartTraining = () => {
-    navigate('/app/running')
+  // Available model types - matches backend optuna_automl.py
+  const modelTypes = [
+    // Gradient Boosting (fast & accurate)
+    { id: 'xgboost', name: 'XGBoost', category: 'boosting' },
+    { id: 'lightgbm', name: 'LightGBM', category: 'boosting' },
+    { id: 'gradient_boosting', name: 'Gradient Boosting', category: 'boosting' },
+    { id: 'catboost', name: 'CatBoost', category: 'boosting' },
+    { id: 'adaboost', name: 'AdaBoost', category: 'boosting' },
+    // Tree-based (interpretable)
+    { id: 'random_forest', name: 'Random Forest', category: 'tree' },
+    { id: 'extra_trees', name: 'Extra Trees', category: 'tree' },
+    { id: 'decision_tree', name: 'Decision Tree', category: 'tree' },
+    // Linear (fast baseline)
+    { id: 'logistic_regression', name: 'Logistic Regression', category: 'linear' },
+    // Instance-based
+    { id: 'knn', name: 'KNN', category: 'instance' },
+    { id: 'svm', name: 'SVM', category: 'instance' },
+    // Probabilistic
+    { id: 'naive_bayes', name: 'Naive Bayes', category: 'probabilistic' },
+  ]
+
+  // Estimate models that can be trained in the time budget
+  const estimatedModels = Math.min(selectedModels.length, Math.max(1, Math.floor(timeBudget[0] / 3)))
+
+  // Get columns from preview data - filter out empty column names
+  const columns = (previewData?.columns || []).filter(col => col && col.trim() !== '')
+
+  // Set default target column when data loads
+  useEffect(() => {
+    if (columns.length > 0 && !targetColumn) {
+      // Pick a sensible default: last column that isn't a _duplicated column
+      const validColumns = columns.filter(c => !c.startsWith('_duplicated'))
+      setTargetColumn(validColumns.length > 0 ? validColumns[validColumns.length - 1] : columns[columns.length - 1])
+    }
+  }, [previewData?.columns]) // Use previewData.columns directly to avoid recreating dependency
+
+  // Reset target column when dataset changes
+  useEffect(() => {
+    setTargetColumn('')
+  }, [selectedDataset?.id])
+
+  // Fetch worker count
+  useEffect(() => {
+    workersApi.list().then(workers => {
+      setWorkerCount(workers.filter(w => w.status === 'online').length)
+    }).catch(() => setWorkerCount(0))
+  }, [])
+
+  const toggleModel = (modelId: string) => {
+    setSelectedModels(prev => 
+      prev.includes(modelId) 
+        ? prev.filter(m => m !== modelId)
+        : [...prev, modelId]
+    )
   }
 
-  const workers = [
-    { id: 1, status: 'idle' },
-    { id: 2, status: 'idle' },
-    { id: 3, status: 'busy' }
-  ]
+  const handleStartTraining = async () => {
+    if (!selectedDataset) {
+      toast.error('Please select a dataset first')
+      return
+    }
+    if (!targetColumn) {
+      toast.error('Please select a target column')
+      return
+    }
+    if (selectedModels.length === 0) {
+      toast.error('Please select at least one model type')
+      return
+    }
+
+    setIsStarting(true)
+    try {
+      const job = await trainingApi.start({
+        dataset_id: selectedDataset.id,
+        target_column: targetColumn,
+        time_budget: timeBudget[0],
+        model_types: selectedModels,
+        name: `Training on ${selectedDataset.name}`,
+      })
+      toast.success('Training job started!')
+      navigate('/running', { state: { jobId: job.id } })
+    } catch (err: any) {
+      console.error('Failed to start training:', err)
+      toast.error('Failed to start training: ' + (err.message || 'Unknown error'))
+    } finally {
+      setIsStarting(false)
+    }
+  }
+
+  if (isLoadingDatasets) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+      </div>
+    )
+  }
+
+  if (datasets.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+            <Zap className="w-8 h-8 text-yellow-500" />
+            Training Configuration
+          </h1>
+          <p className="text-muted-foreground">Configure and launch AutoML training jobs</p>
+        </div>
+        <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50">
+          <CardContent className="p-12 text-center">
+            <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
+            <h3 className="text-lg font-medium mb-2">No Dataset Available</h3>
+            <p className="text-muted-foreground mb-4">Upload a dataset in Data Studio to start training</p>
+            <Button onClick={() => navigate('/data')}>Go to Data Studio</Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // If datasets exist but none selected yet, show loading
+  if (!selectedDataset) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+        <span className="ml-3 text-muted-foreground">Loading dataset...</span>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -35,7 +162,7 @@ export function TrainingConfig() {
           <p className="text-muted-foreground">Configure and launch AutoML training jobs with optimized hyperparameters</p>
         </div>
         <Badge variant="outline" className="text-sm px-4 py-2">
-          {workers.filter(w => w.status === 'idle').length} workers available
+          {workerCount} workers available
         </Badge>
       </div>
 
@@ -46,13 +173,13 @@ export function TrainingConfig() {
           <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-yellow-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-yellow-500/12">
             <CardHeader className="relative">
               <CardTitle>Dataset</CardTitle>
-              <CardDescription>titanic.csv</CardDescription>
+              <CardDescription>{selectedDataset?.name || 'No dataset selected'}</CardDescription>
             </CardHeader>
             <CardContent className="relative">
               <div className="flex gap-2">
-                <Badge variant="outline">891 rows</Badge>
-                <Badge variant="outline">12 columns</Badge>
-                <Badge variant="outline">Binary Classification</Badge>
+                <Badge variant="outline">{(selectedDataset?.num_rows ?? 0).toLocaleString()} rows</Badge>
+                <Badge variant="outline">{selectedDataset?.num_columns ?? 0} columns</Badge>
+                <Badge variant="outline">Classification</Badge>
               </div>
             </CardContent>
           </Card>
@@ -75,9 +202,9 @@ export function TrainingConfig() {
                     <SelectValue placeholder="Select target column" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Survived">Survived</SelectItem>
-                    <SelectItem value="Pclass">Pclass</SelectItem>
-                    <SelectItem value="Age">Age</SelectItem>
+                    {columns.map(col => (
+                      <SelectItem key={col} value={col}>{col}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
@@ -100,34 +227,65 @@ export function TrainingConfig() {
                   className="w-full"
                 />
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>1 min</span>
-                  <span>60 min</span>
+                  <span>1 min (quick)</span>
+                  <span>60 min (thorough)</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Maximum time to search for best model
-                </p>
+                <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                  <p className="text-xs text-blue-400">
+                    ⏱️ <strong>~{estimatedModels} models</strong> will be trained with hyperparameter tuning.
+                    {timeBudget[0] < 5 && <span className="text-yellow-400"> Consider 5+ min for better results.</span>}
+                  </p>
+                </div>
               </div>
 
               {/* Model Types */}
-              <div className="space-y-2">
-                <Label>Model Types</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  {['XGBoost', 'Random Forest', 'LightGBM', 'CatBoost', 'Linear', 'Neural Net'].map(
-                    (model) => (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Model Types</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-7"
+                      onClick={() => setSelectedModels(modelTypes.map(m => m.id))}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-7"
+                      onClick={() => setSelectedModels([])}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {modelTypes.map((model) => (
                       <div
-                        key={model}
-                        className="flex items-center space-x-2 p-3 rounded-lg bg-muted/30 dark:bg-zinc-800/30 border border-border dark:border-zinc-700"
+                        key={model.id}
+                        onClick={() => toggleModel(model.id)}
+                        className={`flex items-center space-x-2 p-2.5 rounded-lg cursor-pointer transition-all border ${
+                          selectedModels.includes(model.id)
+                            ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                            : 'bg-zinc-800/30 border-zinc-700 hover:border-zinc-600'
+                        }`}
                       >
                         <input
                           type="checkbox"
-                          defaultChecked
-                          className="w-4 h-4 rounded border-zinc-600 text-purple-600 focus:ring-purple-500"
+                          checked={selectedModels.includes(model.id)}
+                          onChange={() => {}}
+                          className="w-3.5 h-3.5 rounded border-zinc-600 text-purple-600 focus:ring-purple-500"
                         />
-                        <span className="text-sm">{model}</span>
+                        <span className="text-xs font-medium">{model.name}</span>
                       </div>
                     )
                   )}
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  {selectedModels.length} of {modelTypes.length} models selected
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -150,7 +308,7 @@ export function TrainingConfig() {
                   <Badge variant="success" className="text-xs">Active</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground mb-3">
-                  Intelligently distributes workload across your mesh network (2 workers available)
+                  Intelligently distributes workload across your mesh network ({workerCount} workers available)
                 </p>
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between text-zinc-400">
@@ -159,11 +317,7 @@ export function TrainingConfig() {
                   </div>
                   <div className="flex justify-between text-zinc-400">
                     <span>Active Workers:</span>
-                    <span className="text-green-400">2 online</span>
-                  </div>
-                  <div className="flex justify-between text-zinc-400">
-                    <span>Total VRAM:</span>
-                    <span className="text-zinc-300">18 GB</span>
+                    <span className="text-green-400">{workerCount} online</span>
                   </div>
                 </div>
               </div>
@@ -178,13 +332,23 @@ export function TrainingConfig() {
             <CardContent className="relative">
               <Button
                 onClick={handleStartTraining}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-lg py-6"
+                disabled={isStarting || !selectedDataset || !targetColumn || selectedModels.length === 0}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-lg py-6 disabled:opacity-50"
               >
-                <Play className="w-5 h-5 mr-2" />
-                Start Training
+                {isStarting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-5 h-5 mr-2" />
+                    Start Training
+                  </>
+                )}
               </Button>
               <p className="text-xs text-muted-foreground mt-3 text-center">
-                Estimated: {timeBudget[0]} min • ~20 models • Auto-Distributed
+                {timeBudget[0]} min budget • ~{estimatedModels} models trained • Auto-Distributed
               </p>
             </CardContent>
           </Card>

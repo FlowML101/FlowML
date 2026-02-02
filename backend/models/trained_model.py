@@ -53,8 +53,8 @@ class TrainedModelRead(TrainedModelBase):
     """Schema for reading a trained model"""
     id: str
     created_at: datetime
-    hyperparameters: Optional[dict] = None
-    feature_importance: Optional[dict] = None
+    hyperparameters: Optional[str] = None  # Keep as string, frontend will parse
+    feature_importance: Optional[str] = None  # Keep as string, frontend will parse
 
 
 class ModelLeaderboard(SQLModel):

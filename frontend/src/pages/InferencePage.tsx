@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -6,15 +6,17 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { FlaskConical, Play, Sparkles, TrendingUp, AlertCircle, Loader2 } from 'lucide-react'
+import { FlaskConical, Play, Sparkles, TrendingUp, AlertCircle, Loader2, Activity, RefreshCw } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { resultsApi, type TrainedModel } from '@/lib/api'
+import { resultsApi, trainingApi, type TrainedModel, type Job } from '@/lib/api'
 
 export function InferencePage() {
   const [searchParams] = useSearchParams()
   const modelIdFromUrl = searchParams.get('model_id')
   
   const [models, setModels] = useState<TrainedModel[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [selectedJobId, setSelectedJobId] = useState<string>('all')
   const [modelsLoading, setModelsLoading] = useState(true)
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false)
@@ -35,11 +37,31 @@ export function InferencePage() {
     embarked: 'C',
   })
 
+  // Filter models by selected job
+  const filteredModels = useMemo(() => {
+    if (selectedJobId === 'all') return models
+    return models.filter(m => m.job_id === selectedJobId)
+  }, [models, selectedJobId])
+
   useEffect(() => {
     const fetchModels = async () => {
       try {
-        const data = await resultsApi.listAllModels()
+        const [data, jobsData] = await Promise.all([
+          resultsApi.listAllModels(),
+          trainingApi.list()
+        ])
         setModels(data)
+        setJobs(jobsData.filter(j => j.status === 'completed'))
+        
+        // Auto-select latest job
+        const completedJobs = jobsData.filter(j => j.status === 'completed')
+        if (completedJobs.length > 0) {
+          const latest = completedJobs.sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )[0]
+          setSelectedJobId(latest.id)
+        }
+        
         if (modelIdFromUrl) {
           setSelectedModel(modelIdFromUrl)
         } else if (data.length > 0) {
@@ -53,6 +75,13 @@ export function InferencePage() {
     }
     fetchModels()
   }, [modelIdFromUrl])
+
+  // Auto-select first model when job changes
+  useEffect(() => {
+    if (filteredModels.length > 0 && !filteredModels.find(m => m.id === selectedModel)) {
+      setSelectedModel(filteredModels[0].id)
+    }
+  }, [filteredModels, selectedModel])
 
   const handlePredict = async () => {
     setIsLoading(true)
@@ -74,44 +103,33 @@ export function InferencePage() {
       const result = await resultsApi.predict(selectedModel, features)
       const latency = Date.now() - startTime
       
-      const currentModelData = models.find(m => m.id === selectedModel)
+      const currentModelData = filteredModels.find(m => m.id === selectedModel)
       
       setPrediction({
-        survived: result.prediction === 1 || result.prediction === true,
+        survived: result.prediction === 1 || result.prediction === '1' || String(result.prediction).toLowerCase() === 'true',
         confidence: result.confidence || result.probability || 0.85,
-        model: currentModelData?.algorithm || 'Unknown',
+        model: currentModelData?.name || 'Unknown',
         latency: latency,
       })
     } catch (err) {
       console.error('Prediction failed:', err)
-      // Fallback to demo mode if API fails
-      const ageNum = parseInt(inputData.age) || 0
-      const fareNum = parseFloat(inputData.fare) || 0
-      const isFemale = inputData.sex === 'female'
-      const isFirstClass = inputData.pclass === '1'
-      
-      let survivalChance = 0.5
-      if (isFemale) survivalChance += 0.3
-      if (isFirstClass) survivalChance += 0.2
-      if (ageNum < 18) survivalChance += 0.1
-      if (fareNum > 50) survivalChance += 0.1
-      
-      survivalChance = Math.min(Math.max(survivalChance, 0.1), 0.95)
-      
-      const currentModelData = models.find(m => m.id === selectedModel)
-      
-      setPrediction({
-        survived: survivalChance > 0.5,
-        confidence: survivalChance,
-        model: currentModelData?.algorithm || 'Demo Mode',
-        latency: Date.now() - startTime,
+      // Show error instead of fake demo data
+      setPrediction(null)
+      const currentModelData = filteredModels.find(m => m.id === selectedModel)
+      // Use toast to show error (import toast from sonner at top)
+      import('sonner').then(({ toast }) => {
+        toast.error('Prediction failed', {
+          description: currentModelData 
+            ? `Model "${currentModelData.name}" could not make a prediction. Check that the input features match the training data.`
+            : 'No model selected or model not found.'
+        })
       })
     } finally {
       setIsLoading(false)
     }
   }
 
-  const currentModel = models.find(m => m.id === selectedModel)
+  const currentModel = filteredModels.find(m => m.id === selectedModel)
 
   if (modelsLoading) {
     return (
@@ -134,17 +152,36 @@ export function InferencePage() {
         </div>
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="text-sm px-4 py-2">
-            {models.length} models available
+            {filteredModels.length} models available
           </Badge>
           {currentModel && (
             <Badge className="bg-purple-600 text-sm px-4 py-2">
-              {currentModel.algorithm} • {currentModel.metrics?.accuracy ? `${(currentModel.metrics.accuracy * 100).toFixed(1)}%` : 'N/A'}
+              {currentModel.name} • {currentModel.accuracy ? `${(currentModel.accuracy * 100).toFixed(1)}%` : 'N/A'}
             </Badge>
           )}
         </div>
       </div>
 
-      {models.length === 0 ? (
+      {/* Job Filter */}
+      <div className="flex items-center gap-4 p-4 bg-zinc-900/50 rounded-lg border border-zinc-800">
+        <Activity className="w-4 h-4 text-green-400" />
+        <span className="text-sm text-muted-foreground">Filter by Job:</span>
+        <Select value={selectedJobId} onValueChange={setSelectedJobId}>
+          <SelectTrigger className="w-[250px]">
+            <SelectValue placeholder="Select Job" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Jobs</SelectItem>
+            {jobs.map(job => (
+              <SelectItem key={job.id} value={job.id}>
+                {job.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {filteredModels.length === 0 ? (
         <Card className="border-border">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <FlaskConical className="w-12 h-12 text-muted-foreground mb-4" />
@@ -171,12 +208,12 @@ export function InferencePage() {
                     <SelectValue placeholder="Select a model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {models.map((model) => (
+                    {filteredModels.map((model) => (
                       <SelectItem key={model.id} value={model.id}>
                         <div className="flex items-center gap-2">
-                          <span>{model.algorithm}</span>
+                          <span>{model.name}</span>
                           <Badge variant="secondary" className="text-xs">
-                            {model.metrics?.accuracy ? `${(model.metrics.accuracy * 100).toFixed(1)}% acc` : 'N/A'}
+                            {model.accuracy ? `${(model.accuracy * 100).toFixed(1)}% acc` : 'N/A'}
                           </Badge>
                         </div>
                       </SelectItem>
@@ -187,8 +224,8 @@ export function InferencePage() {
                 {currentModel && (
                   <div className="flex items-center justify-between p-3 rounded-lg bg-purple-600/10 border border-purple-600/30">
                     <div>
-                      <div className="text-sm font-medium">{currentModel.algorithm}</div>
-                      <div className="text-xs text-muted-foreground">Accuracy: {currentModel.metrics?.accuracy ? `${(currentModel.metrics.accuracy * 100).toFixed(1)}%` : 'N/A'}</div>
+                      <div className="text-sm font-medium">{currentModel.name}</div>
+                      <div className="text-xs text-muted-foreground">Accuracy: {currentModel.accuracy ? `${(currentModel.accuracy * 100).toFixed(1)}%` : 'N/A'}</div>
                     </div>
                     <Badge variant="success">Ready</Badge>
                   </div>

@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bell, X, CheckCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { useWebSocket } from '@/hooks/useWebSocket'
 
 export interface Notification {
   id: string
@@ -13,44 +14,79 @@ export interface Notification {
   read: boolean
 }
 
-const mockNotifications: Notification[] = [
-  {
-    id: '1',
-    title: 'Training Complete',
-    message: 'CatBoost model finished training with 98.3% accuracy',
-    type: 'success',
-    timestamp: new Date(Date.now() - 5 * 60000),
-    read: false,
-  },
-  {
-    id: '2',
-    title: 'Worker Connected',
-    message: 'Worker-02 joined the mesh network',
-    type: 'info',
-    timestamp: new Date(Date.now() - 15 * 60000),
-    read: false,
-  },
-  {
-    id: '3',
-    title: 'Dataset Uploaded',
-    message: 'titanic.csv processed successfully (891 rows)',
-    type: 'success',
-    timestamp: new Date(Date.now() - 30 * 60000),
-    read: true,
-  },
-  {
-    id: '4',
-    title: 'Low Memory Warning',
-    message: 'Worker-01 memory usage at 85%',
-    type: 'warning',
-    timestamp: new Date(Date.now() - 60 * 60000),
-    read: true,
-  },
-]
+// Start with empty notifications - only real events will populate this
+const initialNotifications: Notification[] = []
 
 export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false)
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
+  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications)
+  
+  // Listen for WebSocket messages to add real notifications
+  const { lastMessage } = useWebSocket()
+
+  // Add notification helper
+  const addNotification = useCallback((notif: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
+    const newNotif: Notification = {
+      ...notif,
+      id: Date.now().toString(),
+      timestamp: new Date(),
+      read: false,
+    }
+    setNotifications(prev => [newNotif, ...prev].slice(0, 50)) // Keep max 50 notifications
+  }, [])
+
+  // Process WebSocket messages into notifications
+  useEffect(() => {
+    if (!lastMessage) return
+
+    switch (lastMessage.type) {
+      case 'job_update':
+        if (lastMessage.payload.status === 'completed') {
+          addNotification({
+            title: 'Training Complete',
+            message: `${lastMessage.payload.jobName || 'Job'} finished with ${lastMessage.payload.accuracy || 'N/A'}% accuracy`,
+            type: 'success',
+          })
+        } else if (lastMessage.payload.status === 'failed') {
+          addNotification({
+            title: 'Training Failed',
+            message: lastMessage.payload.error || 'Job failed',
+            type: 'error',
+          })
+        }
+        break
+      case 'worker_status':
+        if (lastMessage.payload.status === 'online') {
+          addNotification({
+            title: 'Worker Connected',
+            message: `${lastMessage.payload.workerName || 'Worker'} joined the cluster`,
+            type: 'info',
+          })
+        } else if (lastMessage.payload.status === 'offline') {
+          addNotification({
+            title: 'Worker Disconnected',
+            message: `${lastMessage.payload.workerName || 'Worker'} left the cluster`,
+            type: 'warning',
+          })
+        }
+        break
+      case 'system_event':
+        addNotification({
+          title: lastMessage.payload.title || 'System Event',
+          message: lastMessage.payload.description || '',
+          type: lastMessage.payload.level || 'info',
+        })
+        break
+    }
+  }, [lastMessage, addNotification])
+
+  // Expose addNotification globally for other components to use
+  useEffect(() => {
+    (window as any).__addNotification = addNotification
+    return () => {
+      delete (window as any).__addNotification
+    }
+  }, [addNotification])
 
   const unreadCount = notifications.filter(n => !n.read).length
 

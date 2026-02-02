@@ -1,59 +1,82 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Trophy, Download, Radio, Copy, FlaskConical, Loader2, AlertCircle } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Trophy, Download, Radio, Copy, FlaskConical, Loader2, AlertCircle, RefreshCw, Filter } from 'lucide-react'
 import { toast } from 'sonner'
-import { resultsApi } from '@/lib/api'
-
-interface TrainedModel {
-  id: string
-  job_id: string
-  algorithm: string
-  metrics: {
-    accuracy?: number
-    f1_score?: number
-    precision?: number
-    recall?: number
-    mse?: number
-    rmse?: number
-    r2?: number
-    training_time?: number
-  }
-  file_path: string
-  created_at: string
-}
+import { resultsApi, trainingApi, TrainedModel, Job } from '@/lib/api'
 
 export function Results() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [models, setModels] = useState<TrainedModel[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [selectedJobId, setSelectedJobId] = useState<string>('latest')
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchModels = async () => {
-      try {
-        const data = await resultsApi.listAllModels()
-        // Sort by accuracy (highest first) and add rank
-        const sorted = data.sort((a: TrainedModel, b: TrainedModel) => 
-          (b.metrics?.accuracy || 0) - (a.metrics?.accuracy || 0)
-        )
-        setModels(sorted)
-        setError(null)
-      } catch (err) {
-        setError('Failed to load models')
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
+  const fetchModels = useCallback(async (showRefreshing = false) => {
+    try {
+      if (showRefreshing) setRefreshing(true)
+      else setLoading(true)
+      
+      // Fetch both models and jobs
+      const [modelsData, jobsData] = await Promise.all([
+        resultsApi.listAllModels(),
+        trainingApi.list()
+      ])
+      
+      // Get completed jobs only
+      const completedJobs = jobsData.filter(j => j.status === 'completed')
+      setJobs(completedJobs)
+      
+      // Sort models by created_at (newest first), then by accuracy
+      const sorted = modelsData.sort((a: TrainedModel, b: TrainedModel) => {
+        // First sort by created_at (newest first)
+        const dateA = new Date(a.created_at || 0).getTime()
+        const dateB = new Date(b.created_at || 0).getTime()
+        if (dateB !== dateA) return dateB - dateA
+        // Then by accuracy
+        return (b.accuracy || 0) - (a.accuracy || 0)
+      })
+      setModels(sorted)
+      setError(null)
+    } catch (err) {
+      setError('Failed to load models')
+      console.error(err)
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
     }
-    fetchModels()
   }, [])
 
-  const bestModel = models[0]
+  // Fetch on mount and when navigating to this page
+  useEffect(() => {
+    fetchModels()
+  }, [location.key, fetchModels])
+
+  // Filter models based on selected job
+  const filteredModels = useMemo(() => {
+    if (selectedJobId === 'all') return models
+    if (selectedJobId === 'latest' && models.length > 0) {
+      // Get the job_id of the most recent model
+      const latestJobId = models[0]?.job_id
+      return models.filter(m => m.job_id === latestJobId)
+    }
+    return models.filter(m => m.job_id === selectedJobId)
+  }, [models, selectedJobId])
+
+  // Sort filtered models by rank (accuracy)
+  const sortedModels = useMemo(() => {
+    return [...filteredModels].sort((a, b) => (b.accuracy || 0) - (a.accuracy || 0))
+  }, [filteredModels])
+
+  const bestModel = sortedModels[0]
   
   const formatTime = (seconds?: number) => {
     if (!seconds) return 'N/A'
@@ -85,7 +108,7 @@ export function Results() {
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <Trophy className="w-12 h-12 text-muted-foreground" />
         <p className="text-muted-foreground">No trained models yet. Start a training job first!</p>
-        <Button onClick={() => navigate('/app/training')}>Go to Training</Button>
+        <Button onClick={() => navigate('/train')}>Go to Training</Button>
       </div>
     )
   }
@@ -94,16 +117,40 @@ export function Results() {
     <div className="space-y-6">
       {/* Page Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-bold flex items-center gap-3">
             <Trophy className="w-8 h-8 text-yellow-500" />
             Training Results
           </h1>
-          <p className="text-muted-foreground">Performance leaderboard and model evaluation metrics</p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Job Filter */}
+          <Select value={selectedJobId} onValueChange={setSelectedJobId}>
+            <SelectTrigger className="w-[200px]">
+              <Filter className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="Filter by job" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="latest">Latest Job</SelectItem>
+              <SelectItem value="all">All Jobs</SelectItem>
+              {jobs.map(job => (
+                <SelectItem key={job.id} value={job.id}>
+                  {job.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => fetchModels(true)}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <Badge variant="outline" className="text-sm px-4 py-2">
-            {models.length} models trained
+            {sortedModels.length} models
           </Badge>
           <Button className="bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700">
             <Download className="w-4 h-4 mr-2" />
@@ -121,13 +168,13 @@ export function Results() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Trophy className="w-5 h-5 text-yellow-500" />
-                  Best Model: {bestModel.algorithm}
+                  Best Model: {bestModel.name}
                 </CardTitle>
                 <CardDescription>Highest accuracy on validation set</CardDescription>
               </div>
               <div className="flex gap-2">
                 <Button 
-                  onClick={() => navigate(`/app/inference?model_id=${bestModel.id}`)}
+                  onClick={() => navigate(`/inference?model_id=${bestModel.id}`)}
                   className="bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700"
                 >
                   <FlaskConical className="w-4 h-4 mr-2" />
@@ -145,25 +192,25 @@ export function Results() {
                 <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
                   <div className="text-xs text-muted-foreground">Accuracy</div>
                   <div className="text-2xl font-bold text-green-400">
-                    {bestModel.metrics?.accuracy ? `${(bestModel.metrics.accuracy * 100).toFixed(1)}%` : 'N/A'}
+                    {bestModel.accuracy ? `${(bestModel.accuracy * 100).toFixed(1)}%` : 'N/A'}
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
                   <div className="text-xs text-muted-foreground">F1 Score</div>
                   <div className="text-2xl font-bold text-blue-400">
-                    {bestModel.metrics?.f1_score?.toFixed(3) || 'N/A'}
+                    {bestModel.f1_score?.toFixed(3) || 'N/A'}
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
                   <div className="text-xs text-muted-foreground">Precision</div>
                   <div className="text-2xl font-bold text-purple-400">
-                    {bestModel.metrics?.precision?.toFixed(3) || 'N/A'}
+                    {bestModel.precision?.toFixed(3) || 'N/A'}
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
                   <div className="text-xs text-muted-foreground">Recall</div>
                   <div className="text-2xl font-bold text-yellow-400">
-                    {bestModel.metrics?.recall?.toFixed(3) || 'N/A'}
+                    {bestModel.recall?.toFixed(3) || 'N/A'}
                   </div>
                 </div>
               </div>
@@ -192,7 +239,7 @@ export function Results() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {models.map((model, index) => (
+                  {sortedModels.map((model, index) => (
                     <TableRow key={model.id}>
                       <TableCell>
                         <Badge
@@ -202,20 +249,20 @@ export function Results() {
                           #{index + 1}
                         </Badge>
                       </TableCell>
-                      <TableCell className="font-medium">{model.algorithm}</TableCell>
+                      <TableCell className="font-medium">{model.name}</TableCell>
                       <TableCell>
                         <span className="text-green-400 font-semibold">
-                          {model.metrics?.accuracy ? `${(model.metrics.accuracy * 100).toFixed(1)}%` : 'N/A'}
+                          {model.accuracy ? `${(model.accuracy * 100).toFixed(1)}%` : 'N/A'}
                         </span>
                       </TableCell>
-                      <TableCell className="text-foreground">{model.metrics?.f1_score?.toFixed(3) || 'N/A'}</TableCell>
-                      <TableCell className="text-foreground">{model.metrics?.precision?.toFixed(3) || 'N/A'}</TableCell>
-                      <TableCell className="text-foreground">{model.metrics?.recall?.toFixed(3) || 'N/A'}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{formatTime(model.metrics?.training_time)}</TableCell>
+                      <TableCell className="text-foreground">{model.f1_score?.toFixed(3) || 'N/A'}</TableCell>
+                      <TableCell className="text-foreground">{model.precision?.toFixed(3) || 'N/A'}</TableCell>
+                      <TableCell className="text-foreground">{model.recall?.toFixed(3) || 'N/A'}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{formatTime(model.training_time)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-2 justify-end">
                           <Button 
-                            onClick={() => navigate(`/app/inference?model_id=${model.id}`)}
+                            onClick={() => navigate(`/inference?model_id=${model.id}`)}
                             className="bg-purple-600 hover:bg-purple-700 text-white"
                           >
                             <FlaskConical className="w-4 h-4 mr-1" />
@@ -234,7 +281,7 @@ export function Results() {
                                   Local Inference API
                                 </DialogTitle>
                                 <DialogDescription>
-                                  {model.algorithm} model is now serving on your local network
+                                  {model.name} model is now serving on your local network
                                 </DialogDescription>
                               </DialogHeader>
                               
@@ -284,7 +331,7 @@ export function Results() {
                                       &nbsp;&nbsp;"prediction": 1,<br />
                                       &nbsp;&nbsp;"confidence": 0.87,<br />
                                       &nbsp;&nbsp;"model_id": "{model.id}",<br />
-                                      &nbsp;&nbsp;"algorithm": "{model.algorithm}"<br />
+                                      &nbsp;&nbsp;"model_name": "{model.name}"<br />
                                       {`}`}
                                     </code>
                                   </div>
@@ -295,12 +342,12 @@ export function Results() {
                                   <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50 text-center">
                                     <div className="text-xs text-muted-foreground">Accuracy</div>
                                     <div className="text-lg font-bold text-green-400">
-                                      {model.metrics?.accuracy ? `${(model.metrics.accuracy * 100).toFixed(1)}%` : 'N/A'}
+                                      {model.accuracy ? `${(model.accuracy * 100).toFixed(1)}%` : 'N/A'}
                                     </div>
                                   </div>
                                   <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50 text-center">
                                     <div className="text-xs text-muted-foreground">Training Time</div>
-                                    <div className="text-lg font-bold text-blue-400">{formatTime(model.metrics?.training_time)}</div>
+                                    <div className="text-lg font-bold text-blue-400">{formatTime(model.training_time)}</div>
                                   </div>
                                   <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50 text-center">
                                     <div className="text-xs text-muted-foreground">Created</div>

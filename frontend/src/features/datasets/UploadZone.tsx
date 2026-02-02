@@ -4,14 +4,15 @@ import { Upload, FileText, CheckCircle, Loader2, X, AlertCircle } from 'lucide-r
 import { Button } from '@/components/ui/button'
 import { datasetsApi, Dataset } from '@/lib/api'
 import { toast } from 'sonner'
+import { useDataset } from '@/contexts/DatasetContext'
 
 interface UploadZoneProps {
   onUploadComplete?: (dataset: Dataset) => void
 }
 
 export function UploadZone({ onUploadComplete }: UploadZoneProps) {
+  const { selectedDataset, setSelectedDataset, refreshDatasets } = useDataset()
   const [isDragging, setIsDragging] = useState(false)
-  const [uploadedDataset, setUploadedDataset] = useState<Dataset | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -27,7 +28,8 @@ export function UploadZone({ onUploadComplete }: UploadZoneProps) {
 
     try {
       const dataset = await datasetsApi.upload(file)
-      setUploadedDataset(dataset)
+      setSelectedDataset(dataset)
+      await refreshDatasets()
       toast.success(`Dataset "${dataset.name}" uploaded successfully!`)
       onUploadComplete?.(dataset)
     } catch (err: any) {
@@ -57,7 +59,7 @@ export function UploadZone({ onUploadComplete }: UploadZoneProps) {
   }
 
   const clearUpload = () => {
-    setUploadedDataset(null)
+    setSelectedDataset(null)
     setError(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -96,7 +98,7 @@ export function UploadZone({ onUploadComplete }: UploadZoneProps) {
               Try Again
             </Button>
           </div>
-        ) : !uploadedDataset ? (
+        ) : !selectedDataset ? (
           <div
             className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer ${
               isDragging
@@ -125,9 +127,9 @@ export function UploadZone({ onUploadComplete }: UploadZoneProps) {
                 <FileText className="w-5 h-5 text-green-400" />
               </div>
               <div>
-                <div className="font-medium">{uploadedDataset.name}</div>
+                <div className="font-medium">{selectedDataset.name}</div>
                 <div className="text-xs text-muted-foreground">
-                  {uploadedDataset.num_rows.toLocaleString()} rows × {uploadedDataset.num_columns} columns
+                  {selectedDataset.num_rows.toLocaleString()} rows × {selectedDataset.num_columns} columns
                 </div>
               </div>
             </div>

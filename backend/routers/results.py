@@ -208,3 +208,257 @@ async def list_all_models(
         .limit(limit)
     )
     return result.scalars().all()
+
+
+@router.get("/model/{model_id}/feature-importance")
+async def get_feature_importance(
+    model_id: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """Get feature importance for a trained model"""
+    result = await session.execute(
+        select(TrainedModel).where(TrainedModel.id == model_id)
+    )
+    model = result.scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    # Check if we have stored feature importance
+    if model.feature_importance:
+        import json
+        try:
+            importance_data = json.loads(model.feature_importance)
+            # Convert to standardized format
+            if isinstance(importance_data, dict):
+                features = [
+                    {"feature": k, "importance": v, "rank": i + 1}
+                    for i, (k, v) in enumerate(
+                        sorted(importance_data.items(), key=lambda x: x[1], reverse=True)
+                    )
+                ]
+                return {"model_id": model_id, "model_name": model.name, "features": features}
+        except json.JSONDecodeError:
+            pass
+    
+    # Try to extract from the actual model file
+    if model.model_path and Path(model.model_path).exists():
+        try:
+            loaded_model = get_cached_model(model.model_path)
+            
+            # Check for feature_importances_ attribute (tree-based models)
+            if hasattr(loaded_model, 'feature_importances_'):
+                importances = loaded_model.feature_importances_
+                # Try to get feature names
+                feature_names = None
+                if hasattr(loaded_model, 'feature_names_in_'):
+                    feature_names = list(loaded_model.feature_names_in_)
+                elif hasattr(loaded_model, 'feature_name_'):
+                    feature_names = list(loaded_model.feature_name_)
+                
+                if feature_names is None:
+                    feature_names = [f"Feature_{i}" for i in range(len(importances))]
+                
+                features = [
+                    {"feature": name, "importance": float(imp), "rank": i + 1}
+                    for i, (name, imp) in enumerate(
+                        sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True)
+                    )
+                ]
+                return {"model_id": model_id, "model_name": model.name, "features": features}
+            
+            # For linear models, use coefficients
+            if hasattr(loaded_model, 'coef_'):
+                coefs = loaded_model.coef_
+                if len(coefs.shape) > 1:
+                    coefs = coefs[0]  # For multi-class, use first class
+                
+                feature_names = None
+                if hasattr(loaded_model, 'feature_names_in_'):
+                    feature_names = list(loaded_model.feature_names_in_)
+                
+                if feature_names is None:
+                    feature_names = [f"Feature_{i}" for i in range(len(coefs))]
+                
+                # Use absolute value for importance
+                features = [
+                    {"feature": name, "importance": float(abs(c)), "rank": i + 1}
+                    for i, (name, c) in enumerate(
+                        sorted(zip(feature_names, coefs), key=lambda x: abs(x[1]), reverse=True)
+                    )
+                ]
+                return {"model_id": model_id, "model_name": model.name, "features": features}
+                
+        except Exception as e:
+            pass  # Fall through to default
+    
+    # Return empty if no importance available
+    return {"model_id": model_id, "model_name": model.name, "features": [], "message": "Feature importance not available for this model"}
+
+
+@router.get("/model/{model_id}/confusion-matrix")
+async def get_confusion_matrix(
+    model_id: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """Get confusion matrix for a classification model"""
+    result = await session.execute(
+        select(TrainedModel).where(TrainedModel.id == model_id)
+    )
+    model = result.scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    # Check if we have stored confusion matrix
+    if model.confusion_matrix:
+        import json
+        try:
+            cm_data = json.loads(model.confusion_matrix)
+            return {
+                "model_id": model_id,
+                "model_name": model.name,
+                "matrix": cm_data,
+                "labels": ["Negative", "Positive"]  # Default binary
+            }
+        except json.JSONDecodeError:
+            pass
+    
+    # Generate approximation from metrics if no stored matrix
+    if model.accuracy is not None:
+        acc = model.accuracy
+        # Approximate confusion matrix from accuracy
+        # Assumes balanced classes - this is a fallback
+        tp = int(acc * 50)
+        tn = int(acc * 50)
+        fp = int((1 - acc) * 25)
+        fn = int((1 - acc) * 25)
+        
+        return {
+            "model_id": model_id,
+            "model_name": model.name,
+            "matrix": [[tn, fp], [fn, tp]],
+            "labels": ["Negative", "Positive"],
+            "note": "Approximated from accuracy metric"
+        }
+    
+    return {
+        "model_id": model_id,
+        "model_name": model.name,
+        "matrix": None,
+        "message": "Confusion matrix not available"
+    }
+
+
+@router.post("/compare")
+async def compare_models(
+    model_ids: list[str],
+    session: AsyncSession = Depends(get_session)
+):
+    """Compare multiple models side by side"""
+    if len(model_ids) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 models to compare")
+    if len(model_ids) > 5:
+        raise HTTPException(status_code=400, detail="Maximum 5 models can be compared")
+    
+    result = await session.execute(
+        select(TrainedModel).where(TrainedModel.id.in_(model_ids))
+    )
+    models = result.scalars().all()
+    
+    if len(models) != len(model_ids):
+        raise HTTPException(status_code=404, detail="One or more models not found")
+    
+    # Build comparison data
+    comparison = []
+    for model in models:
+        model_data = {
+            "id": model.id,
+            "name": model.name,
+            "metrics": {
+                "accuracy": model.accuracy,
+                "f1_score": model.f1_score,
+                "precision": model.precision,
+                "recall": model.recall,
+                "auc": model.auc,
+                "rmse": model.rmse,
+                "mae": model.mae,
+                "r2": model.r2
+            },
+            "training_time": model.training_time,
+            "rank": model.rank,
+            "created_at": model.created_at.isoformat()
+        }
+        
+        # Add hyperparameters if available
+        if model.hyperparameters:
+            import json
+            try:
+                model_data["hyperparameters"] = json.loads(model.hyperparameters)
+            except:
+                pass
+        
+        comparison.append(model_data)
+    
+    # Calculate best model for each metric
+    metrics_ranking = {}
+    metric_names = ["accuracy", "f1_score", "precision", "recall", "auc"]
+    
+    for metric in metric_names:
+        values = [(m["id"], m["metrics"].get(metric)) for m in comparison if m["metrics"].get(metric) is not None]
+        if values:
+            best = max(values, key=lambda x: x[1])
+            metrics_ranking[metric] = {"best_model_id": best[0], "best_value": best[1]}
+    
+    return {
+        "models": comparison,
+        "metrics_ranking": metrics_ranking,
+        "recommendation": comparison[0]["id"] if comparison else None  # First is usually best ranked
+    }
+
+
+@router.get("/model/{model_id}/hyperparameters")
+async def get_hyperparameters(
+    model_id: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """Get hyperparameters for a trained model"""
+    result = await session.execute(
+        select(TrainedModel).where(TrainedModel.id == model_id)
+    )
+    model = result.scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    if model.hyperparameters:
+        import json
+        try:
+            return {
+                "model_id": model_id,
+                "model_name": model.name,
+                "hyperparameters": json.loads(model.hyperparameters)
+            }
+        except json.JSONDecodeError:
+            pass
+    
+    # Try to extract from model file
+    if model.model_path and Path(model.model_path).exists():
+        try:
+            loaded_model = get_cached_model(model.model_path)
+            if hasattr(loaded_model, 'get_params'):
+                params = loaded_model.get_params()
+                # Filter out None and callable params
+                params = {k: v for k, v in params.items() 
+                         if v is not None and not callable(v)}
+                return {
+                    "model_id": model_id,
+                    "model_name": model.name,
+                    "hyperparameters": params
+                }
+        except:
+            pass
+    
+    return {
+        "model_id": model_id,
+        "model_name": model.name,
+        "hyperparameters": {},
+        "message": "Hyperparameters not available"
+    }

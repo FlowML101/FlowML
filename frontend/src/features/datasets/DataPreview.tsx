@@ -1,25 +1,59 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Database } from 'lucide-react'
-
-// Mock Titanic dataset
-const mockData = [
-  { PassengerId: 1, Survived: 0, Pclass: 3, Name: 'Braund, Mr. Owen Harris', Sex: 'male', Age: 22, SibSp: 1, Parch: 0, Fare: 7.25 },
-  { PassengerId: 2, Survived: 1, Pclass: 1, Name: 'Cumings, Mrs. John Bradley', Sex: 'female', Age: 38, SibSp: 1, Parch: 0, Fare: 71.28 },
-  { PassengerId: 3, Survived: 1, Pclass: 3, Name: 'Heikkinen, Miss. Laina', Sex: 'female', Age: 26, SibSp: 0, Parch: 0, Fare: 7.92 },
-  { PassengerId: 4, Survived: 1, Pclass: 1, Name: 'Futrelle, Mrs. Jacques Heath', Sex: 'female', Age: 35, SibSp: 1, Parch: 0, Fare: 53.10 },
-  { PassengerId: 5, Survived: 0, Pclass: 3, Name: 'Allen, Mr. William Henry', Sex: 'male', Age: 35, SibSp: 0, Parch: 0, Fare: 8.05 },
-  { PassengerId: 6, Survived: 0, Pclass: 3, Name: 'Moran, Mr. James', Sex: 'male', Age: null, SibSp: 0, Parch: 0, Fare: 8.46 },
-  { PassengerId: 7, Survived: 0, Pclass: 1, Name: 'McCarthy, Mr. Timothy J', Sex: 'male', Age: 54, SibSp: 0, Parch: 0, Fare: 51.86 },
-  { PassengerId: 8, Survived: 0, Pclass: 3, Name: 'Palsson, Master. Gosta Leonard', Sex: 'male', Age: 2, SibSp: 3, Parch: 1, Fare: 21.07 },
-  { PassengerId: 9, Survived: 1, Pclass: 3, Name: 'Johnson, Mrs. Oscar W', Sex: 'female', Age: 27, SibSp: 0, Parch: 2, Fare: 11.13 },
-  { PassengerId: 10, Survived: 1, Pclass: 2, Name: 'Nasser, Mrs. Nicholas', Sex: 'female', Age: 14, SibSp: 1, Parch: 0, Fare: 30.07 },
-]
-
-const columns = ['PassengerId', 'Survived', 'Pclass', 'Name', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare']
+import { Database, Loader2 } from 'lucide-react'
+import { useDataset } from '@/contexts/DatasetContext'
 
 export function DataPreview() {
+  const { selectedDataset, previewData, isLoadingPreview } = useDataset()
+
+  if (!selectedDataset) {
+    return (
+      <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-transparent before:to-cyan-500/10 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12">
+        <CardHeader className="relative">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="w-5 h-5 text-blue-500" />
+                Dataset Preview
+              </CardTitle>
+              <CardDescription>Upload a dataset to see preview</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="relative">
+          <div className="border border-dashed border-border rounded-lg p-12 text-center">
+            <Database className="w-12 h-12 mx-auto mb-4 text-zinc-600" />
+            <p className="text-muted-foreground">No dataset selected</p>
+            <p className="text-sm text-muted-foreground mt-2">Upload a CSV file to get started</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (isLoadingPreview) {
+    return (
+      <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-transparent before:to-cyan-500/10 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12">
+        <CardHeader className="relative">
+          <CardTitle className="flex items-center gap-2">
+            <Database className="w-5 h-5 text-blue-500" />
+            Dataset Preview
+          </CardTitle>
+          <CardDescription>Loading {selectedDataset.name}...</CardDescription>
+        </CardHeader>
+        <CardContent className="relative">
+          <div className="flex items-center justify-center p-12">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const columns = previewData?.columns || []
+  const rows = previewData?.preview_rows || []
+
   return (
     <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-transparent before:to-cyan-500/10 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12">
       <CardHeader className="relative">
@@ -29,47 +63,48 @@ export function DataPreview() {
               <Database className="w-5 h-5 text-blue-500" />
               Dataset Preview
             </CardTitle>
-            <CardDescription>First 10 rows of titanic.csv</CardDescription>
+            <CardDescription>First {rows.length} rows of {selectedDataset.name}</CardDescription>
           </div>
           <div className="flex gap-2">
-            <Badge variant="outline">891 rows</Badge>
-            <Badge variant="outline">12 columns</Badge>
+            <Badge variant="outline">{selectedDataset.num_rows.toLocaleString()} rows</Badge>
+            <Badge variant="outline">{selectedDataset.num_columns} columns</Badge>
           </div>
         </div>
       </CardHeader>
       <CardContent className="relative">
         <div className="border border-border dark:border-zinc-800 rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[400px]">
             <Table>
               <TableHeader>
                 <TableRow>
                   {columns.map((col) => (
-                    <TableHead key={col} className="whitespace-nowrap">
+                    <TableHead key={col} className="whitespace-nowrap sticky top-0 bg-zinc-900">
                       {col}
                     </TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mockData.map((row) => (
-                  <TableRow key={row.PassengerId}>
-                    <TableCell className="font-mono text-xs">{row.PassengerId}</TableCell>
-                    <TableCell>
-                      <Badge variant={row.Survived === 1 ? 'success' : 'secondary'} className="text-xs">
-                        {row.Survived}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{row.Pclass}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{row.Name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs capitalize">
-                        {row.Sex}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{row.Age || 'N/A'}</TableCell>
-                    <TableCell>{row.SibSp}</TableCell>
-                    <TableCell>{row.Parch}</TableCell>
-                    <TableCell className="font-mono text-xs">${row.Fare.toFixed(2)}</TableCell>
+                {rows.map((row, idx) => (
+                  <TableRow key={idx}>
+                    {columns.map((col) => {
+                      const value = row[col]
+                      const displayValue = value === null || value === undefined 
+                        ? 'N/A' 
+                        : typeof value === 'number'
+                          ? Number.isInteger(value) ? value : value.toFixed(2)
+                          : String(value)
+                      
+                      return (
+                        <TableCell key={col} className="font-mono text-xs max-w-[200px] truncate">
+                          {displayValue === 'N/A' ? (
+                            <span className="text-muted-foreground">{displayValue}</span>
+                          ) : (
+                            displayValue
+                          )}
+                        </TableCell>
+                      )
+                    })}
                   </TableRow>
                 ))}
               </TableBody>
@@ -78,7 +113,7 @@ export function DataPreview() {
         </div>
         
         <div className="mt-4 text-xs text-muted-foreground text-center">
-          Showing 10 of 891 rows
+          Showing {rows.length} of {selectedDataset.num_rows.toLocaleString()} rows
         </div>
       </CardContent>
     </Card>
