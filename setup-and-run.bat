@@ -25,9 +25,13 @@ echo     FlowML Studio - Complete Setup
 echo  ========================================
 echo.
 
-REM Store the project root directory
+REM Store the project root directory (the directory where this batch file is located)
 set "PROJECT_ROOT=%~dp0"
+if "%PROJECT_ROOT:~-1%"=="\" set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
 cd /d "%PROJECT_ROOT%"
+
+echo  Project directory: %PROJECT_ROOT%
+echo.
 
 REM ========================================
 REM Step 1: Check Prerequisites
@@ -41,34 +45,37 @@ if errorlevel 1 (
     echo  [ERROR] Python is not installed or not in PATH
     echo  Please install Python 3.10+ from https://www.python.org/downloads/
     echo  Make sure to check "Add Python to PATH" during installation
+    echo.
     pause
-    exit /b 1
+    goto :error_exit
 )
 
 for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PYTHON_VERSION=%%i
-echo  ✓ Python %PYTHON_VERSION% detected
+echo  [OK] Python %PYTHON_VERSION% detected
 
 REM Check Node.js
 node --version >nul 2>&1
 if errorlevel 1 (
     echo  [ERROR] Node.js is not installed or not in PATH
     echo  Please install Node.js 18+ from https://nodejs.org/
+    echo.
     pause
-    exit /b 1
+    goto :error_exit
 )
 
 for /f "tokens=1" %%i in ('node --version') do set NODE_VERSION=%%i
-echo  ✓ Node.js %NODE_VERSION% detected
+echo  [OK] Node.js %NODE_VERSION% detected
 
 REM Check npm
 npm --version >nul 2>&1
 if errorlevel 1 (
     echo  [ERROR] npm is not installed
+    echo.
     pause
-    exit /b 1
+    goto :error_exit
 )
 
-echo  ✓ npm detected
+echo  [OK] npm detected
 
 REM Check Docker
 docker --version >nul 2>&1
@@ -77,11 +84,12 @@ if errorlevel 1 (
     echo  Docker is required for Postgres, Redis, and MinIO
     echo  Please install Docker Desktop from https://www.docker.com/products/docker-desktop/
     echo.
-    choice /C YN /M "Continue without Docker (limited functionality)"
-    if errorlevel 2 exit /b 1
+    echo  Continue without Docker? (App will use SQLite instead of PostgreSQL)
+    choice /C YN /M "Press Y to continue, N to exit"
+    if errorlevel 2 goto :error_exit
     set "SKIP_DOCKER=1"
 ) else (
-    echo  ✓ Docker detected
+    echo  [OK] Docker detected
     set "SKIP_DOCKER=0"
 )
 
@@ -93,19 +101,20 @@ REM ========================================
 echo  [2/8] Setting up Python virtual environment...
 echo.
 
-cd /d "%PROJECT_ROOT%backend"
+cd /d "%PROJECT_ROOT%\backend"
 
 if exist ".venv\" (
-    echo  ✓ Virtual environment already exists
+    echo  [OK] Virtual environment already exists
 ) else (
     echo  Creating virtual environment...
     python -m venv .venv
     if errorlevel 1 (
         echo  [ERROR] Failed to create virtual environment
+        echo.
         pause
-        exit /b 1
+        goto :error_exit
     )
-    echo  ✓ Virtual environment created
+    echo  [OK] Virtual environment created
 )
 
 echo.
@@ -117,23 +126,31 @@ echo  [3/8] Installing Python dependencies...
 echo  This may take several minutes...
 echo.
 
-call .venv\Scripts\activate.bat
-
-REM Upgrade pip first
-python -m pip install --upgrade pip setuptools wheel --quiet
-
-REM Install requirements
-pip install -r requirements.txt --quiet
+call "%PROJECT_ROOT%\backend\.venv\Scripts\activate.bat"
 if errorlevel 1 (
-    echo  [ERROR] Failed to install Python dependencies
-    echo  Trying with verbose output...
-    pip install -r requirements.txt
+    echo  [ERROR] Failed to activate virtual environment
+    echo.
     pause
-    exit /b 1
+    goto :error_exit
 )
 
-echo  ✓ Python dependencies installed
+echo  Upgrading pip...
+python -m pip install --upgrade pip setuptools wheel --quiet >nul 2>&1
 
+echo  Installing requirements (this will take a while)...
+pip install -r requirements.txt --quiet
+if errorlevel 1 (
+    echo  [WARNING] Failed with quiet mode, trying with output...
+    pip install -r requirements.txt
+    if errorlevel 1 (
+        echo  [ERROR] Failed to install Python dependencies
+        echo.
+        pause
+        goto :error_exit
+    )
+)
+
+echo  [OK] Python dependencies installed
 echo.
 
 REM ========================================
@@ -143,25 +160,21 @@ echo  [4/8] Installing Node.js dependencies...
 echo  This may take several minutes...
 echo.
 
-cd /d "%PROJECT_ROOT%frontend"
+cd /d "%PROJECT_ROOT%\frontend"
 
 if exist "node_modules\" (
-    echo  ✓ Node modules already exist
-    echo  Checking for updates...
-    call npm install --quiet
+    echo  [OK] Node modules already exist (skipping install)
 ) else (
     echo  Installing Node modules...
-    call npm install --quiet
+    call npm install
     if errorlevel 1 (
         echo  [ERROR] Failed to install Node dependencies
-        echo  Trying with verbose output...
-        call npm install
+        echo.
         pause
-        exit /b 1
+        goto :error_exit
     )
+    echo  [OK] Node.js dependencies installed
 )
-
-echo  ✓ Node.js dependencies installed
 
 echo.
 
@@ -171,14 +184,13 @@ REM ========================================
 echo  [5/8] Creating required directories...
 echo.
 
-cd /d "%PROJECT_ROOT%backend"
+cd /d "%PROJECT_ROOT%\backend"
 
-if not exist "uploads\" mkdir uploads
-if not exist "trained_models\" mkdir trained_models
-if not exist "logs\" mkdir logs
+if not exist "uploads" mkdir "uploads"
+if not exist "trained_models" mkdir "trained_models"
+if not exist "logs" mkdir "logs"
 
-echo  ✓ Directories created
-
+echo  [OK] Directories created
 echo.
 
 REM ========================================
@@ -189,15 +201,16 @@ if "%SKIP_DOCKER%"=="0" (
     echo  Starting Postgres, Redis, and MinIO...
     echo.
     
-    cd /d "%PROJECT_ROOT%deploy"
+    cd /d "%PROJECT_ROOT%\deploy"
     
     REM Check if Docker daemon is running
     docker info >nul 2>&1
     if errorlevel 1 (
         echo  [WARNING] Docker daemon is not running
         echo  Please start Docker Desktop and try again
+        echo.
         pause
-        exit /b 1
+        goto :error_exit
     )
     
     REM Start Docker containers
@@ -205,19 +218,19 @@ if "%SKIP_DOCKER%"=="0" (
     if errorlevel 1 (
         echo  [ERROR] Failed to start Docker containers
         echo  Please check Docker Desktop and try again
+        echo.
         pause
-        exit /b 1
+        goto :error_exit
     )
     
-    echo  ✓ Docker containers started
-    echo.
+    echo  [OK] Docker containers started
     echo  Waiting for services to be ready...
     timeout /t 8 /nobreak > nul
-    echo  ✓ Services ready
+    echo  [OK] Services ready
     echo.
 ) else (
     echo  [6/8] Skipping Docker infrastructure (not installed)
-    echo  [WARNING] Application will run in limited mode with SQLite
+    echo  [INFO] Application will run in limited mode with SQLite
     echo.
 )
 
@@ -226,7 +239,7 @@ REM Step 7: Initialize Database
 REM ========================================
 echo  [7/8] Database initialization...
 echo  Database will be auto-created on first run
-echo  ✓ Ready
+echo  [OK] Ready
 echo.
 
 REM ========================================
@@ -239,44 +252,44 @@ cd /d "%PROJECT_ROOT%"
 
 REM Start Backend in new window
 echo  Starting Backend API...
-start "FlowML Backend" cmd /k "cd /d "%PROJECT_ROOT%backend" && .venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+start "FlowML Backend" cmd /k "cd /d "%PROJECT_ROOT%\backend" && .venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
 
 REM Brief pause
 timeout /t 3 /nobreak > nul
 
 REM Start Celery Worker in new window
 echo  Starting Celery Worker...
-start "FlowML Worker" cmd /k "cd /d "%PROJECT_ROOT%backend" && .venv\Scripts\celery.exe -A worker.celery_app worker --loglevel=INFO --pool=solo -Q cpu,gpu --hostname=flowml-worker@%%h"
+start "FlowML Worker" cmd /k "cd /d "%PROJECT_ROOT%\backend" && .venv\Scripts\celery.exe -A worker.celery_app worker --loglevel=INFO --pool=solo -Q cpu,gpu --hostname=flowml-worker@%%h"
 
 REM Brief pause
 timeout /t 3 /nobreak > nul
 
 REM Start Frontend in new window
 echo  Starting Frontend...
-start "FlowML Frontend" cmd /k "cd /d "%PROJECT_ROOT%frontend" && npm run dev"
+start "FlowML Frontend" cmd /k "cd /d "%PROJECT_ROOT%\frontend" && npm run dev"
 
 echo.
 echo  ========================================
-echo   🚀 FlowML Studio is Starting!
+echo   FlowML Studio is Starting!
 echo  ========================================
 echo.
 echo   Services are launching in separate windows:
 echo.
-echo   📊 Frontend:  http://localhost:5173
-echo   🔧 Backend:   http://localhost:8000
-echo   📚 API Docs:  http://localhost:8000/docs
-echo   👷 Worker:    Processing jobs in background
+echo   Frontend:  http://localhost:5173
+echo   Backend:   http://localhost:8000
+echo   API Docs:  http://localhost:8000/docs
+echo   Worker:    Processing jobs in background
 echo.
 
 if "%SKIP_DOCKER%"=="0" (
     echo   Infrastructure Services:
-    echo   🗄️  PostgreSQL: localhost:5432
-    echo   🔴 Redis:      localhost:6379
-    echo   💾 MinIO:      http://localhost:9001
+    echo   PostgreSQL: localhost:5432
+    echo   Redis:      localhost:6379
+    echo   MinIO:      http://localhost:9001
     echo.
 )
 
-echo   ⏳ Please wait 10-15 seconds for all services to start...
+echo   Please wait 10-15 seconds for all services to start...
 echo.
 echo   Close this window when you're done working.
 echo   To stop all services:
@@ -295,7 +308,17 @@ echo  Opening browser...
 start http://localhost:5173
 
 echo.
-echo  ✓ Setup complete! Happy machine learning! 🎉
+echo  Setup complete! Happy machine learning!
 echo.
-echo  Press any key to keep this window open for logs...
+echo  Press any key to exit (services will keep running in other windows)
 pause > nul
+exit /b 0
+
+:error_exit
+echo.
+echo  ========================================
+echo   Setup failed! Please fix the errors above.
+echo  ========================================
+echo.
+pause
+exit /b 1
