@@ -13,14 +13,21 @@ cd /d %~dp0
 timeout /t 2 /nobreak > nul
 
 :: Start Backend in new window
-echo  [2/3] Starting Backend...
+echo  [2/4] Starting Backend...
 start "FlowML Backend" cmd /k "cd /d %~dp0backend && .venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
 
 :: Brief pause
 timeout /t 2 /nobreak > nul
 
+:: Start Celery Worker in new window
+echo  [3/4] Starting Celery Worker...
+start "FlowML Worker" cmd /k "cd /d %~dp0backend && .venv\Scripts\celery.exe -A worker.celery_app worker --loglevel=INFO --pool=solo -Q cpu,gpu --hostname=flowml-worker@%%h"
+
+:: Brief pause
+timeout /t 2 /nobreak > nul
+
 :: Start Frontend in new window  
-echo  [3/3] Starting Frontend...
+echo  [4/4] Starting Frontend...
 start "FlowML Frontend" cmd /k "cd /d %~dp0frontend && npm run dev"
 
 echo.
@@ -29,6 +36,7 @@ echo   Services are starting in new windows
 echo  ========================================
 echo.
 echo   Backend:  http://localhost:8000
+echo   Worker:   Celery processing jobs
 echo   Frontend: http://localhost:5173
 echo   API Docs: http://localhost:8000/docs
 echo.

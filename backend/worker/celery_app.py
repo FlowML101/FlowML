@@ -3,6 +3,11 @@ Celery Application Configuration
 Central Celery app with queue routing and task discovery
 """
 import os
+
+# Force CUDA to use NVIDIA GPU (prevents AMD integrated GPU usage)
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Use first NVIDIA GPU  
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'  # Use PCI bus order
+
 from celery import Celery
 from kombu import Queue, Exchange
 from loguru import logger

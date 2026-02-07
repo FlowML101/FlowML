@@ -2,11 +2,17 @@
 FlowML Studio - Backend API
 FastAPI application entry point
 """
+import os
+import sys
+
+# Force CUDA to use NVIDIA GPU (prevents AMD integrated GPU usage)
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Use first NVIDIA GPU
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'  # Use PCI bus order
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-import sys
 
 from config import settings
 from database import init_db

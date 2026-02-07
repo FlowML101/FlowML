@@ -197,10 +197,12 @@ class OptunaAutoML:
         "svm": {
             "class": SVC,
             "params": lambda trial: {
-                "C": trial.suggest_float("C", 1e-3, 100, log=True),
-                "kernel": trial.suggest_categorical("kernel", ["rbf", "poly", "sigmoid"]),
-                "gamma": trial.suggest_categorical("gamma", ["scale", "auto"]),
+                "C": trial.suggest_float("C", 0.1, 10, log=True),
+                "kernel": "rbf",  # Only RBF kernel for speed
+                "gamma": "scale",
                 "probability": True,
+                "max_iter": 1000,  # Limit iterations
+                "cache_size": 500,  # Increase cache for speed
             }
         },
         "decision_tree": {
@@ -280,10 +282,12 @@ class OptunaAutoML:
         "svr": {
             "class": SVR,
             "params": lambda trial: {
-                "C": trial.suggest_float("C", 1e-3, 100, log=True),
-                "kernel": trial.suggest_categorical("kernel", ["rbf", "poly", "sigmoid"]),
-                "gamma": trial.suggest_categorical("gamma", ["scale", "auto"]),
-                "epsilon": trial.suggest_float("epsilon", 0.01, 1.0),
+                "C": trial.suggest_float("C", 0.1, 10, log=True),
+                "kernel": "rbf",  # Only RBF kernel for speed
+                "gamma": "scale",
+                "epsilon": trial.suggest_float("epsilon", 0.1, 0.5),
+                "max_iter": 1000,  # Limit iterations
+                "cache_size": 500,  # Increase cache for speed
             }
         },
         "knn": {
