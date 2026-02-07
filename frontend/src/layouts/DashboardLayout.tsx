@@ -91,7 +91,7 @@ export function DashboardLayout() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-300 group relative overflow-hidden",
                   isActive
-                    ? "bg-primary/20 text-primary shadow-lg shadow-primary/20"
+                    ? "bg-primary/20 text-primary"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent"
                 )}
               >

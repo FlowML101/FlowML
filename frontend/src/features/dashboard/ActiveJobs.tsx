@@ -32,7 +32,7 @@ export function ActiveJobs() {
   }, [])
 
   return (
-    <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-yellow-500/10 before:via-transparent before:to-orange-500/10 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-yellow-500/12">
+    <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-purple-500/10 before:via-transparent before:to-purple-500/10 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-purple-500/12">
       <CardHeader className="relative">
         <div className="flex items-center justify-between">
           <div>
@@ -43,7 +43,7 @@ export function ActiveJobs() {
             <CardDescription>Real-time training pipeline status</CardDescription>
           </div>
           <Link to="/train">
-            <Button size="sm" className="bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700">
+            <Button size="sm" className="bg-gradient-to-r from-purple-600 to-violet-600">
               New Job
             </Button>
           </Link>

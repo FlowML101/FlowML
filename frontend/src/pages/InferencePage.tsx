@@ -347,7 +347,7 @@ export function InferencePage() {
               <Button
                 onClick={handlePredict}
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-lg py-6"
+                className="w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-purple-700 text-lg py-6"
               >
                 {isLoading ? (
                   <>

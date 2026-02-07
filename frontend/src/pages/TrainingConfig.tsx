@@ -130,7 +130,7 @@ export function TrainingConfig() {
         </div>
         <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50">
           <CardContent className="p-12 text-center">
-            <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
+            <AlertCircle className="w-12 h-12 mx-auto mb-4 text-purple-500" />
             <h3 className="text-lg font-medium mb-2">No Dataset Available</h3>
             <p className="text-muted-foreground mb-4">Upload a dataset in Data Studio to start training</p>
             <Button onClick={() => navigate('/data')}>Go to Data Studio</Button>
@@ -170,7 +170,7 @@ export function TrainingConfig() {
         {/* Main Configuration */}
         <div className="lg:col-span-2 space-y-6">
           {/* Dataset Info */}
-          <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-yellow-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-yellow-500/12">
+          <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-purple-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-violet-500/12">
             <CardHeader className="relative">
               <CardTitle>Dataset</CardTitle>
               <CardDescription>{selectedDataset?.name || 'No dataset selected'}</CardDescription>
@@ -185,7 +185,7 @@ export function TrainingConfig() {
           </Card>
 
           {/* Target Column */}
-          <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-yellow-500/10 before:via-orange-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-yellow-500/12">
+          <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-purple-500/10 before:via-violet-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-yellow-500/12">
             <CardHeader className="relative">
               <CardTitle className="flex items-center gap-2">
                 <Settings2 className="w-5 h-5 text-purple-500" />
@@ -293,7 +293,7 @@ export function TrainingConfig() {
 
         {/* Compute Configuration */}
         <div className="space-y-6">
-          <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-green-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-green-500/12">
+          <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-purple-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-green-500/12">
             <CardHeader className="relative">
               <CardTitle>Compute Mode</CardTitle>
               <CardDescription>Automatic distributed training across your mesh</CardDescription>
@@ -325,7 +325,7 @@ export function TrainingConfig() {
           </Card>
 
           {/* Start Training */}
-          <Card className="border-yellow-600/50 bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-yellow-500/20 before:to-orange-500/20 before:opacity-70 shadow-lg shadow-yellow-500/20 transition-all duration-300 hover:shadow-xl hover:shadow-yellow-500/25">
+          <Card className="border-zinc-600/50 bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:opacity-70 transition-all duration-300 hover:shadow-xl hover:shadow-purple-600/15">
             <CardHeader className="relative">
               <CardTitle className="text-lg">Ready to Launch</CardTitle>
             </CardHeader>
@@ -333,7 +333,7 @@ export function TrainingConfig() {
               <Button
                 onClick={handleStartTraining}
                 disabled={isStarting || !selectedDataset || !targetColumn || selectedModels.length === 0}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-lg py-6 disabled:opacity-50"
+                className="w-full bg-gradient-to-r from-purple-600 to-purple-600 hover:from-purple-700 hover:to-purple-700 text-lg py-6 disabled:opacity-50"
               >
                 {isStarting ? (
                   <>

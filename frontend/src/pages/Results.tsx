@@ -152,7 +152,7 @@ export function Results() {
           <Badge variant="outline" className="text-sm px-4 py-2">
             {sortedModels.length} models
           </Badge>
-          <Button className="bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700">
+          <Button className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700">
             <Download className="w-4 h-4 mr-2" />
             Export Report
           </Button>
@@ -162,7 +162,7 @@ export function Results() {
       <div className="space-y-6">
         {/* Best Model Card */}
         {bestModel && (
-        <Card className="border-yellow-600/50 bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-yellow-500/20 before:via-amber-500/10 before:to-orange-500/20 before:opacity-70 shadow-lg shadow-yellow-500/20">
+        <Card className=" bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:from-purple-500/20 before:via-purple-500/10  before:opacity-70  shadow-purple-500/20">
           <CardHeader className="relative">
             <div className="flex items-center justify-between">
               <div>
@@ -175,12 +175,12 @@ export function Results() {
               <div className="flex gap-2">
                 <Button 
                   onClick={() => navigate(`/inference?model_id=${bestModel.id}`)}
-                  className="bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700"
+                  className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700"
                 >
                   <FlaskConical className="w-4 h-4 mr-2" />
                   Test in Lab
                 </Button>
-                <Button className="bg-gradient-to-r from-yellow-600 via-amber-600 to-orange-600 hover:from-yellow-700 hover:via-amber-700 hover:to-orange-700">
+                <Button className="bg-gradient-to-r from-purple-600 via-purple-600 to-violet-600 hover:from-purple-700 hover:via-violet-700 hover:to-purple-700">
                   <Download className="w-4 h-4 mr-2" />
                   Export Model
                 </Button>

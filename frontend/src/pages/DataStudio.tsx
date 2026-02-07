@@ -19,7 +19,7 @@ export function DataStudio() {
         </div>
         <div className="flex items-center gap-3">
           <Link to="/train">
-            <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
+            <Button className="bg-gradient-to-r from-purple-600 to-purple-600 hover:from-purple-700 hover:to-purple-700">
               <Sparkles className="w-4 h-4 mr-2" />
               Start Training
             </Button>

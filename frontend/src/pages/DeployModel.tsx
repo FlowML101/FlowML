@@ -307,7 +307,7 @@ if hasattr(model, 'predict_proba'):
                   <Button 
                     onClick={handleDownload} 
                     disabled={isDownloading}
-                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                    className="w-full bg-gradient-to-r from-violet-600 to-violet-600 hover:from-purple-700 hover:to-violet-700"
                   >
                     {isDownloading ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -454,7 +454,7 @@ if hasattr(model, 'predict_proba'):
                   <Button 
                     onClick={handleDownload} 
                     disabled={isDownloading}
-                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                    className="w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-purple-700"
                   >
                     {isDownloading ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />

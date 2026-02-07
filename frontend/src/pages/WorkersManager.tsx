@@ -66,7 +66,7 @@ export function WorkersManager() {
           <Badge variant="outline" className="text-sm px-4 py-2">
             {onlineWorkers}/{totalWorkers} online
           </Badge>
-          <Button size="sm" className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700">
+          <Button size="sm" className="bg-gradient-to-r from-purple-600 to-purple-600 hover:from-purple-700 hover:to-violet-700">
             <Server className="w-4 h-4 mr-2" />
             Add Worker
           </Button>
@@ -157,7 +157,7 @@ export function WorkersManager() {
       </div>
 
       {/* Workers Table */}
-      <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-purple-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12">
+      <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-purple-500/10 before:via-purple-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-purple-500/12">
         <CardHeader className="relative">
           <CardTitle>Cluster Nodes</CardTitle>
           <CardDescription>Manage and monitor all workers in your mesh</CardDescription>

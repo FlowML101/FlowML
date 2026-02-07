@@ -550,17 +550,17 @@ export function ModelComparison() {
 
               {/* Winner Summary */}
               {bestModel && (
-                <Card className="border-2 border-green-600/50 bg-gradient-to-br from-zinc-900 to-zinc-900/50 shadow-xl shadow-green-500/20">
+                <Card className="border-2 border-zinc-600/50 bg-gradient-to-br from-zinc-900 to-zinc-900/50">
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center shadow-lg">
+                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
                           <Trophy className="w-8 h-8 text-white" />
                         </div>
                         <div>
                           <h3 className="text-2xl font-bold flex items-center gap-3">
                             Recommended Model
-                            <Badge className="bg-green-600">Best Overall</Badge>
+                            <Badge className="bg-yellow-600">Best Overall</Badge>
                           </h3>
                           <p className="text-sm text-muted-foreground mt-1">
                             Highest accuracy with balanced precision-recall trade-off
@@ -568,7 +568,7 @@ export function ModelComparison() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-4xl font-bold text-green-400">{bestModel.name}</div>
+                        <div className="text-4xl font-bold text-yellow-400">{bestModel.name}</div>
                         <p className="text-sm text-muted-foreground">{bestModel.accuracy.toFixed(1)}% accuracy • {bestModel.trainTime}</p>
                       </div>
                     </div>

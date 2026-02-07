@@ -106,7 +106,7 @@ export function LiveMonitor() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-              <Activity className="w-8 h-8 text-green-500" />
+              <Activity className="w-8 h-8 text-purple-500" />
               Live Training Monitor
             </h1>
             <p className="text-muted-foreground">Real-time training progress, metrics visualization, and performance tracking</p>
@@ -132,7 +132,7 @@ export function LiveMonitor() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-            <Activity className="w-8 h-8 text-green-500" />
+            <Activity className="w-8 h-8 text-purple-500" />
             Live Training Monitor
           </h1>
           <p className="text-muted-foreground">Real-time training progress, metrics visualization, and performance tracking</p>
@@ -149,7 +149,7 @@ export function LiveMonitor() {
       </div>
 
       {/* Progress Overview */}
-      <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-green-500/10 before:via-emerald-500/10 before:to-green-500/10 before:opacity-30 before:animate-pulse transition-all duration-300 hover:shadow-md hover:shadow-green-500/12">
+      <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:from-purple-500/10 before:via-violet-500/10 before:to-purple-500 before:opacity-30 before:animate-pulse transition-all duration-300 hover:shadow-md hover:shadow-purple-500/12">
         <CardHeader className="relative">
           <div className="flex items-center justify-between">
             <div>
