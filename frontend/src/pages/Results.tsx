@@ -19,6 +19,8 @@ export function Results() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [downloadingModel, setDownloadingModel] = useState<string | null>(null)
+  const [exportingReport, setExportingReport] = useState(false)
 
   const fetchModels = useCallback(async (showRefreshing = false) => {
     try {
@@ -59,6 +61,94 @@ export function Results() {
   useEffect(() => {
     fetchModels()
   }, [location.key, fetchModels])
+
+  // Download a single model as .pkl file
+  const handleDownloadModel = async (modelId: string, modelName: string) => {
+    setDownloadingModel(modelId)
+    try {
+      const response = await fetch(`http://localhost:8000/api/results/model/${modelId}/download`)
+      if (!response.ok) throw new Error('Download failed')
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${modelName.replace(/\s+/g, '_')}_${modelId.slice(0, 8)}.pkl`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success('Model downloaded successfully!')
+    } catch (err) {
+      console.error('Download failed:', err)
+      toast.error('Failed to download model')
+    } finally {
+      setDownloadingModel(null)
+    }
+  }
+
+  // Export report as JSON file
+  const handleExportReport = () => {
+    setExportingReport(true)
+    try {
+      const report = {
+        generated_at: new Date().toISOString(),
+        summary: {
+          total_models: sortedModels.length,
+          best_model: bestModel ? {
+            name: bestModel.name,
+            accuracy: bestModel.accuracy,
+            f1_score: bestModel.f1_score,
+            precision: bestModel.precision,
+            recall: bestModel.recall,
+            training_time: bestModel.training_time,
+          } : null,
+        },
+        models: sortedModels.map((model, index) => ({
+          rank: index + 1,
+          id: model.id,
+          name: model.name,
+          job_id: model.job_id,
+          dataset_id: model.dataset_id,
+          accuracy: model.accuracy,
+          f1_score: model.f1_score,
+          precision: model.precision,
+          recall: model.recall,
+          auc: model.auc,
+          rmse: model.rmse,
+          mae: model.mae,
+          r2: model.r2,
+          training_time: model.training_time,
+          created_at: model.created_at,
+        })),
+        jobs: jobs.map(job => ({
+          id: job.id,
+          name: job.name,
+          dataset_id: job.dataset_id,
+          status: job.status,
+          models_completed: job.models_completed,
+          created_at: job.created_at,
+          completed_at: job.completed_at,
+        })),
+      }
+
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `flowml_training_report_${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success('Report exported successfully!')
+    } catch (err) {
+      console.error('Export failed:', err)
+      toast.error('Failed to export report')
+    } finally {
+      setExportingReport(false)
+    }
+  }
 
   // Filter models based on selected job
   const filteredModels = useMemo(() => {
@@ -152,9 +242,13 @@ export function Results() {
           <Badge variant="outline" className="text-sm px-4 py-2">
             {sortedModels.length} models
           </Badge>
-          <Button className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700">
-            <Download className="w-4 h-4 mr-2" />
-            Export Report
+          <Button 
+            onClick={handleExportReport}
+            disabled={exportingReport}
+            className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700"
+          >
+            <Download className={`w-4 h-4 mr-2 ${exportingReport ? 'animate-pulse' : ''}`} />
+            {exportingReport ? 'Exporting...' : 'Export Report'}
           </Button>
         </div>
       </div>
@@ -180,9 +274,13 @@ export function Results() {
                   <FlaskConical className="w-4 h-4 mr-2" />
                   Test in Lab
                 </Button>
-                <Button className="bg-gradient-to-r from-purple-600 via-purple-600 to-violet-600 hover:from-purple-700 hover:via-violet-700 hover:to-purple-700">
-                  <Download className="w-4 h-4 mr-2" />
-                  Export Model
+                <Button 
+                  onClick={() => handleDownloadModel(bestModel.id, bestModel.name)}
+                  disabled={downloadingModel === bestModel.id}
+                  className="bg-gradient-to-r from-purple-600 via-purple-600 to-violet-600 hover:from-purple-700 hover:via-violet-700 hover:to-purple-700"
+                >
+                  <Download className={`w-4 h-4 mr-2 ${downloadingModel === bestModel.id ? 'animate-pulse' : ''}`} />
+                  {downloadingModel === bestModel.id ? 'Downloading...' : 'Export Model'}
                 </Button>
               </div>
             </div>
@@ -357,8 +455,14 @@ export function Results() {
                               </div>
                             </DialogContent>
                           </Dialog>
-                          <Button variant="ghost" size="sm" title="Download model">
-                            <Download className="w-4 h-4" />
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            title="Download model"
+                            onClick={() => handleDownloadModel(model.id, model.name)}
+                            disabled={downloadingModel === model.id}
+                          >
+                            <Download className={`w-4 h-4 ${downloadingModel === model.id ? 'animate-pulse' : ''}`} />
                           </Button>
                         </div>
                       </TableCell>

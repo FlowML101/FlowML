@@ -18,6 +18,7 @@ export function InferencePage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [selectedJobId, setSelectedJobId] = useState<string>('all')
   const [modelsLoading, setModelsLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false)
   const [prediction, setPrediction] = useState<{
@@ -43,17 +44,20 @@ export function InferencePage() {
     return models.filter(m => m.job_id === selectedJobId)
   }, [models, selectedJobId])
 
-  useEffect(() => {
-    const fetchModels = async () => {
-      try {
-        const [data, jobsData] = await Promise.all([
-          resultsApi.listAllModels(),
-          trainingApi.list()
-        ])
-        setModels(data)
-        setJobs(jobsData.filter(j => j.status === 'completed'))
-        
-        // Auto-select latest job
+  const fetchModels = async (isRefresh = false) => {
+    try {
+      if (isRefresh) setRefreshing(true)
+      else setModelsLoading(true)
+      
+      const [data, jobsData] = await Promise.all([
+        resultsApi.listAllModels(),
+        trainingApi.list()
+      ])
+      setModels(data)
+      setJobs(jobsData.filter(j => j.status === 'completed'))
+      
+      // Auto-select latest job only on initial load
+      if (!isRefresh) {
         const completedJobs = jobsData.filter(j => j.status === 'completed')
         if (completedJobs.length > 0) {
           const latest = completedJobs.sort((a, b) => 
@@ -67,12 +71,16 @@ export function InferencePage() {
         } else if (data.length > 0) {
           setSelectedModel(data[0].id)
         }
-      } catch (err) {
-        console.error('Failed to load models:', err)
-      } finally {
-        setModelsLoading(false)
       }
+    } catch (err) {
+      console.error('Failed to load models:', err)
+    } finally {
+      if (isRefresh) setRefreshing(false)
+      else setModelsLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchModels()
   }, [modelIdFromUrl])
 
@@ -151,6 +159,15 @@ export function InferencePage() {
           <p className="text-muted-foreground">Test trained models with real-time inputs and instant predictions</p>
         </div>
         <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => fetchModels(true)}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <Badge variant="outline" className="text-sm px-4 py-2">
             {filteredModels.length} models available
           </Badge>

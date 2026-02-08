@@ -305,9 +305,9 @@ export function AdvancedDataViz() {
           {/* Model Selector */}
           <div className="flex items-center gap-2">
             <FlaskConical className="w-4 h-4 text-purple-400" />
-            <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+            <Select value={selectedModelId} onValueChange={setSelectedModelId} disabled={models.length === 0}>
               <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select Model" />
+                <SelectValue placeholder={models.length === 0 ? "No trained models" : "Select Model"} />
               </SelectTrigger>
               <SelectContent>
                 {filteredModels.length === 0 ? (
@@ -321,6 +321,11 @@ export function AdvancedDataViz() {
                 )}
               </SelectContent>
             </Select>
+            {models.length === 0 && (
+              <Badge variant="outline" className="text-xs text-yellow-500">
+                Train models to unlock advanced analysis
+              </Badge>
+            )}
           </div>
         </div>
       </div>
@@ -337,8 +342,20 @@ export function AdvancedDataViz() {
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="distributions">Distributions</TabsTrigger>
             <TabsTrigger value="correlations">Correlations</TabsTrigger>
-            <TabsTrigger value="importance">Feature Importance</TabsTrigger>
-            <TabsTrigger value="shap">SHAP Values</TabsTrigger>
+            <TabsTrigger 
+              value="importance" 
+              disabled={models.length === 0}
+              className={models.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}
+            >
+              Feature Importance
+            </TabsTrigger>
+            <TabsTrigger 
+              value="shap" 
+              disabled={models.length === 0}
+              className={models.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}
+            >
+              SHAP Values
+            </TabsTrigger>
           </TabsList>
 
           {/* Column Statistics & Distributions */}
@@ -584,7 +601,14 @@ export function AdvancedDataViz() {
                 ) : !selectedModelId ? (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <Zap className="w-12 h-12 mb-4 opacity-50" />
-                    <p>Select a job and model above to view feature importance</p>
+                    {models.length === 0 ? (
+                      <>
+                        <p className="mb-2 font-medium">No trained models available</p>
+                        <p className="text-sm">Train a model first to view feature importance</p>
+                      </>
+                    ) : (
+                      <p>Select a job and model above to view feature importance</p>
+                    )}
                   </div>
                 ) : featureImportance.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -649,7 +673,14 @@ export function AdvancedDataViz() {
                 ) : !selectedModelId ? (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <Info className="w-12 h-12 mb-4 opacity-50" />
-                    <p>Select a job and model above to view SHAP values</p>
+                    {models.length === 0 ? (
+                      <>
+                        <p className="mb-2 font-medium">No trained models available</p>
+                        <p className="text-sm">Train a model first to view SHAP values</p>
+                      </>
+                    ) : (
+                      <p>Select a job and model above to view SHAP values</p>
+                    )}
                   </div>
                 ) : shapValues.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">

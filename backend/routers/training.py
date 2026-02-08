@@ -177,6 +177,15 @@ async def run_training_job(
             # Capture the event loop before running in executor
             main_loop = asyncio.get_running_loop()
             
+            # Parse model_types from job (stored as JSON string)
+            model_types_list = None
+            if job.model_types:
+                try:
+                    model_types_list = json.loads(job.model_types) if isinstance(job.model_types, str) else job.model_types
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning(f"Failed to parse model_types for job {job_id}, using all models")
+                    model_types_list = None
+            
             # Sync progress callback for Optuna (runs in thread)
             def progress_callback(progress: int, stage: str, message: str):
                 future = asyncio.run_coroutine_threadsafe(
@@ -198,7 +207,7 @@ async def run_training_job(
                     job_id=job_id,
                     time_budget_minutes=time_budget,
                     problem_type=problem_type,
-                    model_types=None,  # All models
+                    model_types=model_types_list,  # Use selected models from job
                     n_trials_per_model=10,
                     cv_folds=5,
                     progress_callback=progress_callback,
