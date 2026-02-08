@@ -154,7 +154,11 @@ async def suggest_cleaning(
     
     # Load dataset for analysis
     try:
-        df = pl.read_csv(dataset.file_path)
+        df = pl.read_csv(
+            dataset.file_path,
+            infer_schema_length=None,
+            ignore_errors=True
+        )
     except Exception as e:
         raise bad_request(f"Failed to load dataset: {e}")
     
@@ -230,7 +234,11 @@ async def execute_cleaning(
     
     # Load dataset
     try:
-        df = pl.read_csv(dataset.file_path)
+        df = pl.read_csv(
+            dataset.file_path,
+            infer_schema_length=None,
+            ignore_errors=True
+        )
     except Exception as e:
         raise bad_request(f"Failed to load dataset: {e}")
     

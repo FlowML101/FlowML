@@ -53,7 +53,11 @@ def preprocess_dataset(
     )
     
     # Load dataset
-    df = pl.read_csv(dataset_path)
+    df = pl.read_csv(
+        dataset_path,
+        infer_schema_length=None,
+        ignore_errors=True
+    )
     original_shape = df.shape
     logger.info(f"[{dataset_id}] Loaded: {original_shape[0]} rows, {original_shape[1]} columns")
     

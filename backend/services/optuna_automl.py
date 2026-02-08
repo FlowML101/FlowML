@@ -610,7 +610,11 @@ class OptunaAutoML:
         if dataset_path.endswith('.parquet'):
             df = pl.read_parquet(dataset_path).to_pandas()
         else:
-            df = pl.read_csv(dataset_path).to_pandas()
+            df = pl.read_csv(
+                dataset_path,
+                infer_schema_length=None,  # Scan all rows for accurate type inference
+                ignore_errors=True  # Handle mixed types gracefully
+            ).to_pandas()
         
         dataset_info = {
             "rows": len(df),

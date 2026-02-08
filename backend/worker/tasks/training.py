@@ -233,7 +233,11 @@ def train_single_model(
         if dataset_path.endswith('.parquet'):
             df = pl.read_parquet(dataset_path).to_pandas()
         else:
-            df = pl.read_csv(dataset_path).to_pandas()
+            df = pl.read_csv(
+                dataset_path,
+                infer_schema_length=None,
+                ignore_errors=True
+            ).to_pandas()
         
         # Sample if dataset is too large (prevent memory issues)
         MAX_ROWS = 100000

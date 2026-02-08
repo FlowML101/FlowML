@@ -60,7 +60,11 @@ def run_inference(
     # Load data
     if isinstance(data, str):
         # Path to CSV
-        df = pl.read_csv(data).to_pandas()
+        df = pl.read_csv(
+            data,
+            infer_schema_length=None,
+            ignore_errors=True
+        ).to_pandas()
     else:
         # List of dicts
         df = pd.DataFrame(data)

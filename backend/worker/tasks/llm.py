@@ -46,7 +46,11 @@ def suggest_cleaning_async(
     
     # Load dataset
     try:
-        df = pl.read_csv(dataset_path)
+        df = pl.read_csv(
+            dataset_path,
+            infer_schema_length=None,
+            ignore_errors=True
+        )
     except Exception as e:
         return {
             "dataset_id": dataset_id,

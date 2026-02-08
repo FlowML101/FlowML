@@ -142,6 +142,8 @@ class ReadOptions:
     skip_rows: int = 0
     encoding: str = "utf-8"
     null_values: List[str] = None
+    infer_schema_length: Optional[int] = None  # None = scan all rows for accurate type inference
+    ignore_errors: bool = True  # Ignore parsing errors for mixed types and edge cases
     
     # Sampling
     sample_rows: Optional[int] = None  # Read only N rows
@@ -277,6 +279,8 @@ class DataReader:
             null_values=options.null_values,
             low_memory=options.low_memory,
             n_rows=options.sample_rows,
+            infer_schema_length=options.infer_schema_length,
+            ignore_errors=options.ignore_errors,
         )
     
     @classmethod
@@ -290,6 +294,8 @@ class DataReader:
             encoding=options.encoding,
             null_values=options.null_values,
             n_rows=options.sample_rows,
+            infer_schema_length=options.infer_schema_length,
+            ignore_errors=options.ignore_errors,
         )
     
     @classmethod
