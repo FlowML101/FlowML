@@ -59,6 +59,12 @@ class LLMStatusResponse(BaseModel):
     models: List[str]
 
 
+class ChatRequest(BaseModel):
+    """Chat request with optional context"""
+    message: str
+    context: Optional[str] = None
+
+
 class CleaningRequest(BaseModel):
     """Request for cleaning suggestions"""
     dataset_id: str
@@ -599,8 +605,7 @@ async def suggest_feature_engineering(
 
 @router.post("/chat")
 async def chat_with_llm(
-    message: str,
-    context: Optional[str] = None,
+    request: ChatRequest,
 ):
     """
     General chat endpoint for LLM interaction.
@@ -614,9 +619,9 @@ async def chat_with_llm(
     
     llm_service = get_llm_service()
     
-    prompt = message
-    if context:
-        prompt = f"Context: {context}\n\nQuestion: {message}"
+    prompt = request.message
+    if request.context:
+        prompt = f"Context: {request.context}\n\nQuestion: {request.message}"
     
     response = await llm_service.client.generate(
         prompt=prompt,
