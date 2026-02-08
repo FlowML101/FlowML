@@ -69,10 +69,11 @@ class OllamaClient:
         max_tokens: int = 2048,
     ):
         self.base_url = base_url or settings.OLLAMA_URL
-        self.model = model or settings.OLLAMA_MODEL
+        self.model = model or settings.OLLAMA_MODEL or ""  # Will be auto-detected if empty
         self.timeout = timeout
         self.max_tokens = max_tokens
         self._client = httpx.AsyncClient(timeout=timeout)
+        self._model_detected = False
     
     async def generate(
         self,
@@ -93,6 +94,18 @@ class OllamaClient:
         Returns:
             LLMResponse with generated content
         """
+        # Auto-detect model if not set
+        await self._ensure_model()
+        
+        if not self.model:
+            return LLMResponse(
+                success=False,
+                content="",
+                model="",
+                tokens_used=0,
+                error="No Ollama models available. Please pull a model first (e.g., 'ollama pull llama3')",
+            )
+        
         max_tokens = max_tokens or self.max_tokens
         
         payload = {
@@ -168,6 +181,18 @@ class OllamaClient:
         Returns:
             LLMResponse with generated content
         """
+        # Auto-detect model if not set
+        await self._ensure_model()
+        
+        if not self.model:
+            return LLMResponse(
+                success=False,
+                content="",
+                model="",
+                tokens_used=0,
+                error="No Ollama models available. Please pull a model first (e.g., 'ollama pull llama3')",
+            )
+        
         max_tokens = max_tokens or self.max_tokens
         
         payload = {
@@ -216,6 +241,17 @@ class OllamaClient:
             logger.error(f"Failed to list Ollama models: {e}")
             return []
     
+    async def _ensure_model(self):
+        """Auto-detect model if not set"""
+        if not self.model or not self._model_detected:
+            models = await self.list_models()
+            if models:
+                self.model = models[0]  # Use first available model
+                self._model_detected = True
+                logger.info(f"Auto-detected Ollama model: {self.model}")
+            else:
+                logger.warning("No Ollama models available")
+    
     async def is_available(self) -> bool:
         """Check if Ollama is available"""
         try:
@@ -235,20 +271,43 @@ class LLMService:
     """
     
     # System prompts
-    CLEANING_SYSTEM_PROMPT = """You are a data cleaning expert. You analyze datasets and suggest Polars DataFrame operations to clean and improve data quality.
+    CLEANING_SYSTEM_PROMPT = """You are a data cleaning expert. You analyze datasets and suggest SAFE, PREDEFINED cleaning operations.
 
-Rules:
-1. Only suggest Polars operations (not pandas)
-2. Always use `pl.col()` syntax
-3. Provide executable Python code
-4. Explain why each cleaning step is needed
-5. Be conservative - don't remove data unnecessarily
+CRITICAL: You can ONLY suggest these operation types:
+1. fill_missing - Fill missing values (strategies: mean, median, mode, forward, backward, constant, interpolate)
+2. drop_missing - Drop rows or columns with missing values
+3. drop_duplicates - Remove duplicate rows
+4. cast_type - Convert column data type (int, float, string, datetime, boolean)
+5. remove_outliers - Remove outliers (methods: iqr, zscore, percentile)
+6. standardize - Z-score standardization (mean=0, std=1)
+7. normalize - Min-max normalization to [0, 1]
+8. string_clean - Clean string values (lowercase, uppercase, strip, remove_special, remove_numbers)
+9. rename_column - Rename a column
+10. drop_column - Drop a column
+11. encode_categorical - Encode categorical values (label or onehot)
 
-Response format: JSON with fields:
-- issue: Brief description of the data issue
-- description: Detailed explanation
-- polars_code: Valid Polars code to fix the issue
-- confidence: 0.0-1.0 confidence score"""
+Response format: JSON array of operations with these EXACT fields:
+{
+  "operation": "operation_type",
+  "column": "column_name",
+  "description": "What this operation does and why",
+  "confidence": 0.0-1.0,
+  "parameters": {
+    // Operation-specific parameters
+    // fill_missing: {"strategy": "mean"|"median"|"mode"|"forward"|"backward"|"constant"|"interpolate", "fill_value": value (if constant)}
+    // drop_missing: {"axis": "rows"|"columns", "threshold": 0.0-1.0 (optional), "columns": ["col1", "col2"] (optional)}
+    // drop_duplicates: {"columns": ["col1", "col2"] (optional), "keep": "first"|"last"|"none"}
+    // cast_type: {"target_type": "int"|"float"|"string"|"datetime"|"boolean", "date_format": "format" (if datetime)}
+    // remove_outliers: {"method": "iqr"|"zscore"|"percentile", "threshold": number}
+    // standardize: {} (no parameters)
+    // normalize: {} (no parameters)
+    // string_clean: {"operations": ["lowercase", "strip", "remove_special", etc.]}
+    // rename_column: {"new_name": "new_column_name"}
+    // encode_categorical: {"method": "label"|"onehot"}
+  }
+}
+
+Be conservative - only suggest operations that will genuinely improve data quality."""
 
     EXPLAIN_SYSTEM_PROMPT = """You are a machine learning expert. You analyze model results and provide actionable insights.
 
@@ -270,54 +329,51 @@ Response format: JSON with fields:
     
     async def suggest_cleaning(
         self,
-        columns: List[str],
-        dtypes: Dict[str, str],
-        sample_data: List[Dict[str, Any]],
-        null_counts: Dict[str, int],
-        unique_counts: Dict[str, int],
-        num_rows: int,
-    ) -> List[CleaningSuggestion]:
+        dataset_analysis: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
         """
-        Analyze dataset and suggest cleaning operations.
+        Analyze dataset and suggest safe cleaning operations.
         
         Args:
-            columns: List of column names
-            dtypes: Column name -> dtype mapping
-            sample_data: Sample rows from the dataset
-            null_counts: Column name -> null count
-            unique_counts: Column name -> unique value count
-            num_rows: Total number of rows
+            dataset_analysis: Output from cleaning_operations.analyze_dataset()
         
         Returns:
-            List of CleaningSuggestion with Polars code
+            List of structured cleaning operations (not arbitrary code)
         """
         # Build context for LLM
         context = f"""Dataset Analysis:
-- Total rows: {num_rows}
-- Columns: {len(columns)}
+- Total rows: {dataset_analysis['total_rows']}
+- Total columns: {dataset_analysis['total_columns']}
+- Duplicate rows: {dataset_analysis['duplicate_rows']}
+- Memory: {dataset_analysis['memory_usage_mb']:.2f} MB
 
 Column Details:
 """
-        for col in columns:
-            null_pct = (null_counts.get(col, 0) / num_rows * 100) if num_rows > 0 else 0
-            unique = unique_counts.get(col, 0)
-            context += f"- {col}: {dtypes.get(col, 'unknown')}, {null_pct:.1f}% nulls, {unique} unique values\n"
-        
-        context += f"\nSample data (first 3 rows):\n{json.dumps(sample_data[:3], indent=2, default=str)}"
+        for col_info in dataset_analysis['columns']:
+            context += f"\n{col_info['name']}:"
+            context += f"\n  Type: {col_info['dtype']}"
+            context += f"\n  Missing: {col_info['null_count']} ({col_info['null_percentage']}%)"
+            context += f"\n  Unique values: {col_info['unique_count']}"
+            if col_info.get('is_numeric'):
+                context += f"\n  Stats: mean={col_info.get('mean')}, std={col_info.get('std')}, min={col_info.get('min')}, max={col_info.get('max')}"
+            if col_info.get('sample_values'):
+                context += f"\n  Sample: {col_info.get('sample_values')[:3]}"
         
         prompt = f"""{context}
 
-Analyze this dataset and suggest up to 5 data cleaning operations. For each issue found, provide:
-1. What the issue is
-2. Why it matters
-3. Polars code to fix it
+Analyze this dataset and suggest up to 5 cleaning operations. Focus on:
+1. Handling missing values (only if >5% missing)
+2. Fixing data types that seem wrong
+3. Removing duplicates (if any exist)
+4. Cleaning string columns (standardize case, remove special chars)
+5. Handling outliers in numeric columns (only if extreme values detected)
 
-Return a JSON array of suggestions."""
+Return ONLY operations from the allowed list. Use proper JSON format."""
 
         response = await self.client.generate(
             prompt=prompt,
             system=self.CLEANING_SYSTEM_PROMPT,
-            temperature=0.3,  # More deterministic for code
+            temperature=0.2,  # Very deterministic for structured output
             max_tokens=2048,
         )
         
@@ -327,7 +383,7 @@ Return a JSON array of suggestions."""
         
         # Parse response
         try:
-            # Try to extract JSON from response
+            # Extract JSON from response
             content = response.content.strip()
             
             # Handle markdown code blocks
@@ -336,31 +392,31 @@ Return a JSON array of suggestions."""
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0]
             
-            suggestions_data = json.loads(content)
+            # Remove any leading/trailing whitespace and comments
+            content = content.strip()
             
-            if isinstance(suggestions_data, dict):
-                suggestions_data = [suggestions_data]
+            operations_data = json.loads(content)
             
-            suggestions = []
-            for item in suggestions_data[:5]:  # Limit to 5
-                suggestions.append(CleaningSuggestion(
-                    issue=item.get("issue", "Unknown issue"),
-                    description=item.get("description", ""),
-                    polars_code=item.get("polars_code", ""),
-                    confidence=float(item.get("confidence", 0.5)),
-                ))
+            if isinstance(operations_data, dict):
+                # Single operation wrapped in object
+                operations_data = [operations_data]
             
-            return suggestions
+            # Validate and structure operations
+            structured_operations = []
+            for op_data in operations_data[:5]:  # Limit to 5
+                # Ensure required fields exist
+                if all(k in op_data for k in ['operation', 'description', 'confidence']):
+                    structured_operations.append(op_data)
+            
+            return structured_operations
             
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse LLM response as JSON: {e}")
-            # Return raw response as single suggestion
-            return [CleaningSuggestion(
-                issue="Analysis Complete",
-                description=response.content,
-                polars_code="# See description for suggestions",
-                confidence=0.3,
-            )]
+            logger.warning(f"Response was: {response.content[:500]}")
+            return []
+        except Exception as e:
+            logger.error(f"Error processing LLM suggestions: {e}")
+            return []
     
     async def explain_results(
         self,

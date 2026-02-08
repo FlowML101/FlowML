@@ -27,6 +27,23 @@ from services.llm_service import (
     CleaningSuggestion,
     ResultExplanation,
 )
+from services.cleaning_operations import (
+    CleaningOperation,
+    CleaningExecutor,
+    analyze_dataset,
+    FillMissingOperation,
+    DropMissingOperation,
+    DropDuplicatesOperation,
+    CastTypeOperation,
+    RemoveOutliersOperation,
+    StandardizeOperation,
+    NormalizeOperation,
+    StringCleanOperation,
+    RenameColumnOperation,
+    DropColumnOperation,
+    EncodeCategoricalOperation,
+    OperationType,
+)
 from exceptions import not_found, bad_request, service_unavailable
 
 router = APIRouter(prefix="/llm", tags=["llm"])
@@ -47,39 +64,44 @@ class CleaningRequest(BaseModel):
     dataset_id: str
 
 
-class CleaningSuggestionResponse(BaseModel):
-    """Single cleaning suggestion"""
-    issue: str
+class CleaningOperationSuggestion(BaseModel):
+    """Single cleaning operation suggestion (safe, structured)"""
+    operation: str  # Operation type from OperationType enum
+    column: Optional[str] = None
+    columns: Optional[List[str]] = None
     description: str
-    polars_code: str
     confidence: float
+    parameters: Dict[str, Any]  # Operation-specific parameters
 
 
 class CleaningSuggestionsResponse(BaseModel):
-    """Response with cleaning suggestions"""
+    """Response with safe cleaning operation suggestions"""
     dataset_id: str
     dataset_name: str
-    suggestions: List[CleaningSuggestionResponse]
+    suggestions: List[CleaningOperationSuggestion]
+    dataset_analysis: Dict[str, Any]  # Full dataset statistics
     llm_available: bool
 
 
-class ExecuteCleaningRequest(BaseModel):
-    """Request to execute cleaning code"""
+class ApplyOperationsRequest(BaseModel):
+    """Request to apply cleaning operations"""
     dataset_id: str
-    polars_code: str
+    operations: List[Dict[str, Any]]  # List of operation configurations
     preview_only: bool = True  # Default to preview mode for safety
     new_dataset_name: Optional[str] = None
 
 
-class ExecuteCleaningResponse(BaseModel):
-    """Response from cleaning execution"""
+class ApplyOperationsResponse(BaseModel):
+    """Response from applying operations"""
     success: bool
     preview_rows: Optional[List[Dict[str, Any]]] = None
     rows_before: int
     rows_after: int
     columns_before: int
     columns_after: int
+    operations_applied: List[str]
     new_dataset_id: Optional[str] = None
+    new_dataset_name: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -139,10 +161,11 @@ async def suggest_cleaning(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Analyze a dataset and suggest data cleaning operations.
+    Analyze a dataset and suggest SAFE cleaning operations.
     
-    Uses LLM to identify data quality issues and generate
-    Polars code to fix them. Requires human approval before execution.
+    Uses LLM to identify data quality issues and returns structured
+    operations (not arbitrary code). Operations are from a predefined
+    safe whitelist and can be executed without security risks.
     """
     # Get dataset
     result = await session.execute(
@@ -162,67 +185,60 @@ async def suggest_cleaning(
     except Exception as e:
         raise bad_request(f"Failed to load dataset: {e}")
     
-    # Calculate statistics
-    columns = df.columns
-    dtypes = {col: str(df[col].dtype) for col in columns}
-    null_counts = {col: df[col].null_count() for col in columns}
-    unique_counts = {col: df[col].n_unique() for col in columns}
-    sample_data = df.head(10).to_dicts()
-    
-    # Get LLM service
-    llm_service = get_llm_service()
+    # Analyze dataset comprehensively
+    dataset_analysis = analyze_dataset(df)
     
     # Check if Ollama is available
     status = await check_ollama_status()
     
     if not status["available"]:
-        # Return empty suggestions with availability flag
+        # Return empty suggestions with analysis
         return CleaningSuggestionsResponse(
             dataset_id=dataset.id,
             dataset_name=dataset.name,
             suggestions=[],
+            dataset_analysis=dataset_analysis,
             llm_available=False,
         )
     
-    # Get suggestions from LLM
-    suggestions = await llm_service.suggest_cleaning(
-        columns=columns,
-        dtypes=dtypes,
-        sample_data=sample_data,
-        null_counts=null_counts,
-        unique_counts=unique_counts,
-        num_rows=len(df),
-    )
+    # Get LLM service and get suggestions
+    llm_service = get_llm_service()
+    suggestions_raw = await llm_service.suggest_cleaning(dataset_analysis)
+    
+    # Convert to response format
+    suggestions = []
+    for sug in suggestions_raw:
+        suggestions.append(CleaningOperationSuggestion(
+            operation=sug.get('operation', 'unknown'),
+            column=sug.get('column'),
+            columns=sug.get('columns'),
+            description=sug.get('description', 'No description'),
+            confidence=sug.get('confidence', 0.5),
+            parameters=sug.get('parameters', {}),
+        ))
     
     return CleaningSuggestionsResponse(
         dataset_id=dataset.id,
         dataset_name=dataset.name,
-        suggestions=[
-            CleaningSuggestionResponse(
-                issue=s.issue,
-                description=s.description,
-                polars_code=s.polars_code,
-                confidence=s.confidence,
-            )
-            for s in suggestions
-        ],
+        suggestions=suggestions,
+        dataset_analysis=dataset_analysis,
         llm_available=True,
     )
 
 
-@router.post("/execute-cleaning", response_model=ExecuteCleaningResponse)
-async def execute_cleaning(
-    request: ExecuteCleaningRequest,
+@router.post("/apply-operations", response_model=ApplyOperationsResponse)
+async def apply_operations(
+    request: ApplyOperationsRequest,
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Execute approved cleaning code on a dataset.
+    Apply safe cleaning operations to a dataset.
     
-    By default runs in preview mode (preview_only=True) to show
-    the effect before committing. Set preview_only=False to
-    create a new cleaned dataset.
+    Operations are executed from a predefined whitelist - NO arbitrary
+    code execution. By default runs in preview mode. Set preview_only=False
+    to create a new cleaned dataset.
     
-    SAFETY: Only Polars operations on 'df' variable are allowed.
+    SAFE: All operations are validated and executed through CleaningExecutor.
     """
     # Get dataset
     result = await session.execute(
@@ -244,61 +260,123 @@ async def execute_cleaning(
     
     rows_before = len(df)
     columns_before = len(df.columns)
+    applied_operations = []
     
-    # Validate code (basic security check)
-    code = request.polars_code.strip()
-    
-    # Blocklist dangerous operations
-    dangerous_patterns = [
-        "import os", "import sys", "import subprocess",
-        "open(", "exec(", "eval(", "__", "globals", "locals",
-        "import shutil", "pathlib", "requests", "urllib",
-    ]
-    
-    for pattern in dangerous_patterns:
-        if pattern in code:
-            raise bad_request(f"Code contains disallowed pattern: {pattern}")
-    
-    # Execute code in restricted namespace
+    # Apply operations sequentially
     try:
-        # Only allow pl (Polars) in namespace
-        namespace = {"df": df, "pl": pl}
-        
-        # Execute the code
-        exec(code, namespace)
-        
-        # Get the modified dataframe
-        df_result = namespace.get("df", df)
-        
-        if not isinstance(df_result, (pl.DataFrame, pl.LazyFrame)):
-            raise bad_request("Code must produce a Polars DataFrame")
-        
-        if isinstance(df_result, pl.LazyFrame):
-            df_result = df_result.collect()
+        for op_config in request.operations:
+            operation_type = op_config.get('operation')
+            column = op_config.get('column')
+            columns = op_config.get('columns')
+            description = op_config.get('description', 'No description')
+            parameters = op_config.get('parameters', {})
+            
+            # Create appropriate operation object based on type
+            operation = None
+            
+            if operation_type == OperationType.FILL_MISSING:
+                operation = FillMissingOperation(
+                    column=column,
+                    strategy=parameters.get('strategy', 'mean'),
+                    fill_value=parameters.get('fill_value'),
+                    description=description,
+                )
+            elif operation_type == OperationType.DROP_MISSING:
+                operation = DropMissingOperation(
+                    axis=parameters.get('axis', 'rows'),
+                    threshold=parameters.get('threshold'),
+                    columns=parameters.get('columns'),
+                    description=description,
+                )
+            elif operation_type == OperationType.DROP_DUPLICATES:
+                operation = DropDuplicatesOperation(
+                    columns=parameters.get('columns'),
+                    keep=parameters.get('keep', 'first'),
+                    description=description,
+                )
+            elif operation_type == OperationType.CAST_TYPE:
+                operation = CastTypeOperation(
+                    column=column,
+                    target_type=parameters.get('target_type', 'string'),
+                    date_format=parameters.get('date_format'),
+                    description=description,
+                )
+            elif operation_type == OperationType.REMOVE_OUTLIERS:
+                operation = RemoveOutliersOperation(
+                    column=column,
+                    method=parameters.get('method', 'iqr'),
+                    threshold=parameters.get('threshold', 1.5),
+                    percentile_range=parameters.get('percentile_range'),
+                    description=description,
+                )
+            elif operation_type == OperationType.STANDARDIZE:
+                operation = StandardizeOperation(
+                    column=column,
+                    description=description,
+                )
+            elif operation_type == OperationType.NORMALIZE:
+                operation = NormalizeOperation(
+                    column=column,
+                    description=description,
+                )
+            elif operation_type == OperationType.STRING_CLEAN:
+                operation = StringCleanOperation(
+                    column=column,
+                    operations=parameters.get('operations', ['strip']),
+                    description=description,
+                )
+            elif operation_type == OperationType.RENAME_COLUMN:
+                operation = RenameColumnOperation(
+                    column=column,
+                    new_name=parameters.get('new_name', f"{column}_renamed"),
+                    description=description,
+                )
+            elif operation_type == OperationType.DROP_COLUMN:
+                operation = DropColumnOperation(
+                    column=column,
+                    description=description,
+                )
+            elif operation_type == OperationType.ENCODE_CATEGORICAL:
+                operation = EncodeCategoricalOperation(
+                    column=column,
+                    method=parameters.get('method', 'label'),
+                    description=description,
+                )
+            else:
+                logger.warning(f"Unknown operation type: {operation_type}")
+                continue
+            
+            if operation:
+                # Execute the operation safely
+                df = CleaningExecutor.execute(df, operation)
+                applied_operations.append(f"{operation_type}: {description}")
         
     except Exception as e:
-        return ExecuteCleaningResponse(
+        logger.error(f"Failed to apply operations: {e}")
+        return ApplyOperationsResponse(
             success=False,
             rows_before=rows_before,
             rows_after=rows_before,
             columns_before=columns_before,
             columns_after=columns_before,
-            error=f"Code execution failed: {str(e)}",
+            operations_applied=applied_operations,
+            error=f"Operation failed: {str(e)}",
         )
     
-    rows_after = len(df_result)
-    columns_after = len(df_result.columns)
+    rows_after = len(df)
+    columns_after = len(df.columns)
     
     if request.preview_only:
         # Return preview
-        preview_rows = df_result.head(20).to_dicts()
-        return ExecuteCleaningResponse(
+        preview_rows = df.head(20).to_dicts()
+        return ApplyOperationsResponse(
             success=True,
             preview_rows=preview_rows,
             rows_before=rows_before,
             rows_after=rows_after,
             columns_before=columns_before,
             columns_after=columns_after,
+            operations_applied=applied_operations,
         )
     
     # Create new dataset
@@ -312,35 +390,41 @@ async def execute_cleaning(
     new_path = settings.UPLOAD_DIR / new_filename
     
     # Save cleaned dataset
-    df_result.write_csv(new_path)
+    df.write_csv(new_path)
     
-    # Create new dataset record
+    # Get new dataset info
+    new_columns = df.columns
+    new_dtypes = {col: str(df[col].dtype) for col in new_columns}
+    
+    # Create new dataset record with versioning
     new_dataset = Dataset(
         name=new_name,
         filename=new_filename,
         file_path=str(new_path),
         file_size=new_path.stat().st_size,
-        num_rows=rows_after,
-        num_columns=columns_after,
-        columns=json.dumps(df_result.columns),
-        dtypes=json.dumps({col: str(df_result[col].dtype) for col in df_result.columns}),
-        description=f"Cleaned version of {dataset.name}",
+        num_rows=len(df),
+        num_columns=len(new_columns),
+        columns=json.dumps(new_columns),
+        dtypes=json.dumps(new_dtypes),
+        description=f"Cleaned version of '{dataset.name}' with {len(applied_operations)} operations",
+        parent_id=dataset.id,  # Track lineage
+        version=dataset.version + 1,
+        operation_history=json.dumps(applied_operations),
     )
     
     session.add(new_dataset)
     await session.commit()
     await session.refresh(new_dataset)
     
-    logger.info(f"Created cleaned dataset {new_dataset.id} from {dataset.id}")
-    
-    return ExecuteCleaningResponse(
+    return ApplyOperationsResponse(
         success=True,
-        preview_rows=df_result.head(10).to_dicts(),
         rows_before=rows_before,
         rows_after=rows_after,
         columns_before=columns_before,
         columns_after=columns_after,
+        operations_applied=applied_operations,
         new_dataset_id=new_dataset.id,
+        new_dataset_name=new_dataset.name,
     )
 
 

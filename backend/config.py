@@ -105,7 +105,7 @@ class Settings(BaseSettings):
     # LLM / Ollama
     # ===================
     OLLAMA_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen2.5:3b"  # Default model
+    OLLAMA_MODEL: str = ""  # Auto-detect from running models (leave empty for auto-detection)
     LLM_MAX_TOKENS: int = 2048
     LLM_TIMEOUT: float = 120.0  # seconds
     

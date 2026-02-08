@@ -3,11 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { 
   Bot, Send, Sparkles, Code2, Copy, Check, Zap, 
-  TrendingUp, AlertCircle, Lightbulb, WifiOff, RefreshCw
+  TrendingUp, AlertCircle, Lightbulb, WifiOff, RefreshCw, Database
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useDataset } from '@/contexts/DatasetContext'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 
@@ -28,6 +30,7 @@ interface LLMStatus {
 }
 
 export function EnhancedCopilot() {
+  const { selectedDataset, previewData } = useDataset()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -89,24 +92,46 @@ export function EnhancedCopilot() {
     setIsTyping(true)
 
     try {
-      // For now, we show that LLM is connected but the chat feature
-      // requires a dataset context. In a full implementation, this would
-      // call specific LLM endpoints based on the query type.
+      // Build context from dataset if available
+      let context = ''
+      if (selectedDataset && previewData) {
+        context = `Dataset: ${selectedDataset.name}\n`
+        context += `Rows: ${selectedDataset.num_rows}, Columns: ${selectedDataset.num_columns}\n`
+        context += `Columns: ${previewData.columns.join(', ')}`
+      }
+      
+      // Call real chat API
+      const response = await fetch(`${API_BASE}/llm/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: messageText,
+          context: context || undefined,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Chat request failed')
+      }
+
+      const data = await response.json()
       
       const assistantMessage: Message = {
         role: 'assistant',
-        content: `I understood your request: "${messageText}". To provide specific analysis, please:\n\n1. **Upload a dataset** in the Data Studio\n2. **Select it** from the dropdown above\n3. **Ask me** about that dataset\n\nI can then provide real insights using the ${llmStatus.default_model} model.`,
-        suggestions: ['How do I upload data?', 'What can you analyze?'],
+        content: data.response || 'No response from AI',
         timestamp: new Date()
       }
 
       setMessages(prev => [...prev, assistantMessage])
-    } catch {
-      setMessages(prev => [...prev, {
+    } catch (error) {
+      const errorMessage: Message = {
         role: 'assistant',
-        content: '❌ Sorry, I encountered an error processing your request. Please try again.',
+        content: selectedDataset
+          ? '❌ Sorry, I encountered an error. Please try again.'
+          : '⚠️ Please select a dataset first to get context-aware analysis.',
         timestamp: new Date()
-      }])
+      }
+      setMessages(prev => [...prev, errorMessage])
     } finally {
       setIsTyping(false)
     }
@@ -164,14 +189,15 @@ export function EnhancedCopilot() {
           <div className="text-center space-y-2">
             <h3 className="font-semibold">Ollama Not Connected</h3>
             <p className="text-sm text-muted-foreground max-w-xs">
-              To enable AI-powered data analysis, start the Ollama service with a model like <code className="text-purple-400">llama3</code> or <code className="text-purple-400">mistral</code>.
+              To enable AI-powered data analysis, start Ollama with any model you prefer.
             </p>
           </div>
           <div className="bg-zinc-800/50 rounded-lg p-4 w-full max-w-sm">
-            <p className="text-xs text-muted-foreground mb-2">Run in terminal:</p>
+            <p className="text-xs text-muted-foreground mb-2">Example:</p>
             <code className="text-xs text-green-400 font-mono">
               ollama run llama3
             </code>
+            <p className="text-xs text-muted-foreground mt-2">or any other model</p>
           </div>
           <Button 
             onClick={checkLLMStatus}
@@ -213,6 +239,28 @@ export function EnhancedCopilot() {
             <span className="text-xs text-muted-foreground">Online</span>
           </div>
         </div>
+        
+        {/* Dataset indicator */}
+        {selectedDataset && (
+          <Alert className="mt-3 bg-blue-500/10 border-blue-500/30">
+            <Database className="w-4 h-4" />
+            <AlertDescription className="text-xs">
+              Analyzing: <span className="font-semibold">{selectedDataset.name}</span> 
+              <span className="text-muted-foreground ml-2">
+                ({selectedDataset.num_rows} rows, {selectedDataset.num_columns} columns)
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        {!selectedDataset && (
+          <Alert className="mt-3 bg-yellow-500/10 border-yellow-500/30">
+            <AlertCircle className="w-4 h-4" />
+            <AlertDescription className="text-xs">
+              Select a dataset to get context-aware analysis
+            </AlertDescription>
+          </Alert>
+        )}
       </CardHeader>
 
       <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 relative">
