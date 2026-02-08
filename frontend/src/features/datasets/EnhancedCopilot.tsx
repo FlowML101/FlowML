@@ -214,8 +214,8 @@ export function EnhancedCopilot() {
 
   // LLM available - show chat interface
   return (
-    <Card className="flex flex-col border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-cyan-500/10 before:to-blue-500/10 before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12 h-full">
-      <CardHeader className="border-b border-border relative pb-4">
+    <Card className="flex flex-col border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:via-cyan-500/10 before:to-blue-500/10 before:opacity-30 before:pointer-events-none transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12 h-full">
+      <CardHeader className="border-b border-border relative pb-4 z-10">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 via-blue-600 to-pink-600 flex items-center justify-center shadow-lg">
@@ -263,7 +263,7 @@ export function EnhancedCopilot() {
         )}
       </CardHeader>
 
-      <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 relative">
+      <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 relative z-10">
         <AnimatePresence>
           {messages.map((message, index) => (
             <motion.div
@@ -364,7 +364,7 @@ export function EnhancedCopilot() {
         <div ref={messagesEndRef} />
       </CardContent>
 
-      <div className="p-4 border-t border-border space-y-3">
+      <div className="p-4 border-t border-border space-y-3 relative z-10">
         {/* Quick Actions */}
         <div className="flex gap-2 overflow-x-auto pb-2">
           <Button
@@ -399,16 +399,23 @@ export function EnhancedCopilot() {
         {/* Input */}
         <div className="flex gap-2">
           <Input
+            type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              console.log('Input change:', e.target.value)
+              setInput(e.target.value)
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 handleSend()
               }
             }}
+            onFocus={() => console.log('Input focused')}
             placeholder="Ask about your data..."
-            className="flex-1 bg-zinc-800/50 border-zinc-700 focus:border-purple-500/50"
+            disabled={isTyping}
+            autoComplete="off"
+            className="flex-1 bg-zinc-900 border-zinc-700 focus:border-purple-500 focus-visible:ring-purple-500 text-white"
           />
           <Button 
             onClick={() => handleSend()} 
