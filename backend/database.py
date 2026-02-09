@@ -40,11 +40,20 @@ async_session = async_sessionmaker(
 
 
 async def init_db():
-    """Initialize database tables"""
+    """Initialize database tables and run migrations"""
     from models import dataset, job, trained_model, worker  # noqa: F401
+    from sqlalchemy import text
     
     async with async_engine.begin() as conn:
+        # Create tables if they don't exist
         await conn.run_sync(SQLModel.metadata.create_all)
+        
+        # Run schema migrations for PostgreSQL (add missing columns)
+        if "postgresql" in settings.DATABASE_URL:
+            # Datasets table migrations
+            await conn.execute(text('ALTER TABLE datasets ADD COLUMN IF NOT EXISTS parent_id VARCHAR'))
+            await conn.execute(text('ALTER TABLE datasets ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1'))
+            await conn.execute(text('ALTER TABLE datasets ADD COLUMN IF NOT EXISTS operation_history VARCHAR'))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
