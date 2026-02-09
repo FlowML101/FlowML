@@ -119,6 +119,7 @@ echo   Launching Services
 echo  ========================================
 echo.
 
+:: N Word
 :: Start Backend
 echo  Starting Backend API...
 start "FlowML Backend" cmd /k "cd /d %~dp0backend && .venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
