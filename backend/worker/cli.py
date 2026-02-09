@@ -6,6 +6,8 @@ import os
 import sys
 import argparse
 import json
+import time
+import threading
 from pathlib import Path
 
 # Ensure the backend directory is in path
@@ -33,6 +35,37 @@ def configure_logging(log_level: str = "INFO"):
         retention="7 days",
         level=log_level,
     )
+
+
+def _start_heartbeat_thread(orchestrator_url: str, worker_id: str, interval: int = 30):
+    """
+    Start a daemon thread that POSTs heartbeats to the master every `interval` seconds.
+    This keeps the worker marked as 'online' in the master's DB (TTL is 90s).
+    """
+    import psutil
+    
+    def _heartbeat_loop():
+        import httpx
+        url = f"{orchestrator_url.rstrip('/')}/api/workers/heartbeat"
+        while True:
+            try:
+                ram = psutil.virtual_memory()
+                payload = {
+                    "worker_id": worker_id,
+                    "status": "online",
+                    "available_ram_gb": round(ram.available / (1024 ** 3), 2),
+                    "current_tasks": 0,  # Could be enhanced to count active Celery tasks
+                }
+                resp = httpx.post(url, json=payload, timeout=5.0)
+                if resp.status_code != 200:
+                    logger.warning(f"Heartbeat returned {resp.status_code}")
+            except Exception as e:
+                logger.warning(f"Heartbeat failed: {e}")
+            time.sleep(interval)
+
+    t = threading.Thread(target=_heartbeat_loop, daemon=True, name="heartbeat")
+    t.start()
+    logger.info(f"Heartbeat thread started (every {interval}s -> {orchestrator_url})")
 
 
 def main():
@@ -101,7 +134,8 @@ def main():
     logger.info(f"Concurrency: {concurrency}")
     
     # Register with orchestrator if URL provided
-    if args.register:
+    orchestrator_url = args.register
+    if orchestrator_url:
         try:
             import httpx
             
@@ -130,18 +164,22 @@ def main():
             }
             
             response = httpx.post(
-                f"{args.register.rstrip('/')}/api/workers/register",
+                f"{orchestrator_url.rstrip('/')}/api/workers/register",
                 json=payload,
                 timeout=10.0,
             )
             
             if response.status_code == 200:
-                logger.info(f"Registered with orchestrator: {args.register}")
+                logger.info(f"Registered with orchestrator: {orchestrator_url}")
             else:
                 logger.warning(f"Failed to register: {response.status_code} - {response.text}")
                 
         except Exception as e:
             logger.warning(f"Failed to register with orchestrator: {e}")
+    
+    # Start heartbeat background thread (keeps worker visible on master)
+    if orchestrator_url:
+        _start_heartbeat_thread(orchestrator_url, caps.worker_id)
     
     # Start Celery worker
     from worker.celery_app import celery_app

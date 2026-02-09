@@ -396,6 +396,73 @@ export const statsApi = {
   },
 }
 
+// ============ Cluster ============
+
+export interface TailscalePeer {
+  id: string
+  hostname: string
+  dns_name?: string
+  tailscale_ip: string
+  online: boolean
+  os?: string
+  last_seen?: string
+}
+
+export interface ClusterInfo {
+  mode: string
+  role: string
+  redis_host: string
+  redis_url: string
+  tailscale: {
+    enabled: boolean
+    installed: boolean
+    tailnet?: string
+    self_ip?: string
+    self_hostname?: string
+    peer_count: number
+    online_peers: number
+  }
+  local: {
+    hostname: string
+    local_ip: string
+  }
+}
+
+export interface JoinInstructions {
+  command: string
+  prerequisites: string[]
+  mode: string
+  master_address: string
+}
+
+export const clusterApi = {
+  getInfo: async (): Promise<ClusterInfo> => {
+    const response = await fetch(`${API_BASE}/cluster/info`)
+    return handleResponse<ClusterInfo>(response)
+  },
+
+  getTailscalePeers: async (): Promise<{
+    enabled: boolean
+    tailnet?: string
+    self?: { hostname: string; ip: string }
+    peers: TailscalePeer[]
+    message?: string
+  }> => {
+    const response = await fetch(`${API_BASE}/cluster/tailscale/peers`)
+    return handleResponse(response)
+  },
+
+  getJoinCommand: async (): Promise<JoinInstructions> => {
+    const response = await fetch(`${API_BASE}/cluster/join`)
+    return handleResponse<JoinInstructions>(response)
+  },
+
+  pingPeer: async (hostname: string): Promise<{ success: boolean; latency_ms?: number }> => {
+    const response = await fetch(`${API_BASE}/cluster/tailscale/ping/${hostname}`, { method: 'POST' })
+    return handleResponse(response)
+  },
+}
+
 // ============ Health ============
 
 export const healthApi = {

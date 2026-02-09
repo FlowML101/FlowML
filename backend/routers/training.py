@@ -1,14 +1,15 @@
 """
 Training routes - start jobs, get status, cancel
-Optimized with proper async handling and job management
+Supports distributed execution via Celery with local fallback
 """
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 from datetime import datetime
+import asyncio
 import json
 import threading
-from typing import Dict
+from typing import Dict, Optional
 from loguru import logger
 
 from database import get_session, get_session_context
@@ -21,8 +22,25 @@ from config import settings
 
 router = APIRouter(prefix="/training", tags=["training"])
 
-# Track running jobs for cancellation
+# Track running jobs for cancellation (local execution only)
 _running_jobs: Dict[str, threading.Event] = {}
+# Track Celery async-result IDs for distributed jobs
+_celery_tasks: Dict[str, str] = {}
+
+
+def _celery_available() -> bool:
+    """Check if Celery broker (Redis) is reachable and at least one worker is online."""
+    try:
+        from worker.celery_app import celery_app
+        conn = celery_app.connection()
+        conn.connect()
+        conn.close()
+        # Check if any workers are actively consuming
+        inspect = celery_app.control.inspect(timeout=1.0)
+        active_queues = inspect.active_queues()
+        return active_queues is not None and len(active_queues) > 0
+    except Exception:
+        return False
 
 
 @router.post("/start", response_model=JobRead)
@@ -91,21 +109,57 @@ async def start_training(
     )
     dataset = result2.scalar_one()
     
-    # Start training in background
-    cancel_event = threading.Event()
-    _running_jobs[job.id] = cancel_event
+    # --- Dispatch: prefer Celery workers, fall back to local ---
+    use_celery = _celery_available()
     
-    background_tasks.add_task(
-        run_training_job,
-        job.id,
-        dataset.file_path,
-        job_data.target_column,
-        job_data.time_budget,
-        job_data.problem_type,
-        cancel_event
-    )
+    if use_celery:
+        # Dispatch to a remote Celery worker
+        from worker.tasks.training import train_automl
+        
+        model_types_list = None
+        if job_data.model_types:
+            model_types_list = job_data.model_types if isinstance(job_data.model_types, list) else None
+        
+        async_result = train_automl.apply_async(
+            kwargs={
+                "job_id": job.id,
+                "dataset_path": dataset.file_path,
+                "target_column": job_data.target_column,
+                "problem_type": job_data.problem_type or "auto",
+                "time_budget": job_data.time_budget,
+                "model_types": model_types_list,
+                "n_trials_per_model": 10,
+            },
+            task_id=job.id,  # use job_id as Celery task_id for easy lookup
+            queue="cpu",
+        )
+        _celery_tasks[job.id] = async_result.id
+        
+        # Start a background poller that watches Celery state and updates DB + WS
+        background_tasks.add_task(
+            _poll_celery_job,
+            job.id,
+            async_result.id,
+        )
+        
+        logger.info(f"Dispatched training job {job.id} to Celery worker (task={async_result.id})")
+    else:
+        # No Celery workers available – run locally
+        cancel_event = threading.Event()
+        _running_jobs[job.id] = cancel_event
+        
+        background_tasks.add_task(
+            run_training_job,
+            job.id,
+            dataset.file_path,
+            job_data.target_column,
+            job_data.time_budget,
+            job_data.problem_type,
+            cancel_event,
+        )
+        
+        logger.info(f"Started training job {job.id} locally (no Celery workers available)")
     
-    logger.info(f"Started training job {job.id} for dataset {dataset.name}")
     return job
 
 
@@ -377,11 +431,20 @@ async def cancel_job(
     if job.status not in [JobStatus.PENDING, JobStatus.RUNNING]:
         raise bad_request("Job cannot be cancelled - already completed or failed")
     
-    # Signal cancellation to the running task
+    # Signal cancellation – local or Celery
     cancel_event = _running_jobs.get(job_id)
     if cancel_event:
         cancel_event.set()
-        logger.info(f"Cancellation signal sent to job {job_id}")
+        logger.info(f"Cancellation signal sent to local job {job_id}")
+    
+    celery_task_id = _celery_tasks.pop(job_id, None)
+    if celery_task_id:
+        try:
+            from worker.celery_app import celery_app
+            celery_app.control.revoke(celery_task_id, terminate=True, signal="SIGTERM")
+            logger.info(f"Revoked Celery task {celery_task_id} for job {job_id}")
+        except Exception as e:
+            logger.warning(f"Failed to revoke Celery task: {e}")
     
     job.status = JobStatus.CANCELLED
     job.completed_at = datetime.utcnow()
@@ -461,3 +524,155 @@ async def _run_training_wrapper(
 ):
     """Wrapper for running training in executor"""
     await run_training_job(job_id, dataset_path, target_column, time_budget, problem_type, cancel_event)
+
+
+async def _poll_celery_job(job_id: str, celery_task_id: str):
+    """
+    Background poller: watch Celery task state and mirror progress
+    back into the Job DB row + WebSocket broadcasts.
+    Runs on the FastAPI server, NOT on the worker.
+    """
+    from celery.result import AsyncResult
+    from models.trained_model import TrainedModel
+    
+    # Mark job as running immediately
+    async with get_session_context() as session:
+        result = await session.execute(select(Job).where(Job.id == job_id))
+        job = result.scalar_one_or_none()
+        if job:
+            job.status = JobStatus.RUNNING
+            job.started_at = datetime.utcnow()
+            await session.commit()
+    
+    await manager.broadcast({
+        "type": "job_update",
+        "payload": {"jobId": job_id, "status": "running", "progress": 0, "message": "Dispatched to worker"}
+    })
+    
+    ar = AsyncResult(celery_task_id)
+    last_progress = -1
+    
+    while True:
+        await asyncio.sleep(2)  # poll every 2 seconds
+        
+        state = ar.state  # PENDING, STARTED, PROGRESS, SUCCESS, FAILURE, REVOKED
+        meta = ar.info if isinstance(ar.info, dict) else {}
+        
+        # Relay progress updates
+        if state == "PROGRESS":
+            progress = meta.get("progress", 0)
+            if progress != last_progress:
+                last_progress = progress
+                async with get_session_context() as session:
+                    res = await session.execute(select(Job).where(Job.id == job_id))
+                    j = res.scalar_one_or_none()
+                    if j:
+                        j.progress = progress
+                        j.current_model = meta.get("message", "")
+                        await session.commit()
+                
+                await manager.broadcast({
+                    "type": "job_update",
+                    "payload": {
+                        "jobId": job_id,
+                        "progress": progress,
+                        "stage": meta.get("stage", ""),
+                        "message": meta.get("message", ""),
+                    }
+                })
+        
+        elif state == "SUCCESS":
+            task_result = ar.result  # dict returned by the Celery task
+            task_status = task_result.get("status", "completed")
+            
+            async with get_session_context() as session:
+                res = await session.execute(select(Job).where(Job.id == job_id))
+                j = res.scalar_one_or_none()
+                if j:
+                    if task_status == "completed":
+                        # Save trained models from Celery result
+                        models = task_result.get("models", [])
+                        for model_data in models:
+                            metrics = model_data.get("metrics", {})
+                            trained_model = TrainedModel(
+                                name=model_data.get("algorithm", "unknown"),
+                                job_id=job_id,
+                                dataset_id=j.dataset_id,
+                                accuracy=metrics.get("accuracy"),
+                                f1_score=metrics.get("f1"),
+                                precision=metrics.get("precision"),
+                                recall=metrics.get("recall"),
+                                auc=metrics.get("auc"),
+                                rmse=metrics.get("rmse"),
+                                mae=metrics.get("mae"),
+                                r2=metrics.get("r2"),
+                                training_time=model_data.get("training_time", 0),
+                                rank=model_data.get("rank", 0),
+                                model_path=model_data.get("model_path"),
+                                hyperparameters=json.dumps(model_data.get("params", {})),
+                                feature_importance=json.dumps(model_data.get("feature_importance", {})),
+                            )
+                            session.add(trained_model)
+                        
+                        j.status = JobStatus.COMPLETED
+                        j.progress = 100
+                        j.models_completed = len(models)
+                        j.total_models = len(models)
+                    elif task_status == "cancelled":
+                        j.status = JobStatus.CANCELLED
+                    else:  # failed / timeout
+                        j.status = JobStatus.FAILED
+                        j.error_message = task_result.get("error", "Unknown error")
+                    
+                    j.completed_at = datetime.utcnow()
+                    await session.commit()
+            
+            best_model = task_result.get("best_model", "")
+            await manager.broadcast({
+                "type": "job_update",
+                "payload": {
+                    "jobId": job_id,
+                    "status": task_status,
+                    "progress": 100,
+                    "bestModel": best_model,
+                }
+            })
+            logger.info(f"Celery job {job_id} finished: {task_status}")
+            break
+        
+        elif state == "FAILURE":
+            error_msg = str(ar.info) if ar.info else "Worker task failed"
+            async with get_session_context() as session:
+                res = await session.execute(select(Job).where(Job.id == job_id))
+                j = res.scalar_one_or_none()
+                if j:
+                    j.status = JobStatus.FAILED
+                    j.error_message = error_msg
+                    j.completed_at = datetime.utcnow()
+                    await session.commit()
+            
+            await manager.broadcast({
+                "type": "job_update",
+                "payload": {"jobId": job_id, "status": "failed", "error": error_msg}
+            })
+            logger.error(f"Celery job {job_id} failed: {error_msg}")
+            break
+        
+        elif state == "REVOKED":
+            async with get_session_context() as session:
+                res = await session.execute(select(Job).where(Job.id == job_id))
+                j = res.scalar_one_or_none()
+                if j:
+                    j.status = JobStatus.CANCELLED
+                    j.completed_at = datetime.utcnow()
+                    await session.commit()
+            
+            await manager.broadcast({
+                "type": "job_update",
+                "payload": {"jobId": job_id, "status": "cancelled"}
+            })
+            logger.info(f"Celery job {job_id} was revoked")
+            break
+    
+    # Cleanup
+    _celery_tasks.pop(job_id, None)

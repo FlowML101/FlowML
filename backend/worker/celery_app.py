@@ -75,10 +75,11 @@ celery_app.conf.update(
         Queue("priority", Exchange("flowml"), routing_key="priority"),
     ),
     
-    # Task routes
+    # Task routes - must match actual @shared_task(name=...) values
     task_routes={
-        "worker.tasks.training.train_model": {"queue": "cpu"},
-        "worker.tasks.training.train_model_gpu": {"queue": "gpu"},
+        "worker.tasks.training.train_automl": {"queue": "cpu"},
+        "worker.tasks.training.train_single_model": {"queue": "cpu"},
+        "worker.tasks.training.get_training_status": {"queue": "cpu"},
         "worker.tasks.preprocessing.preprocess_dataset": {"queue": "cpu"},
         "worker.tasks.inference.run_inference": {"queue": "cpu"},
         "worker.tasks.inference.run_inference_gpu": {"queue": "gpu"},

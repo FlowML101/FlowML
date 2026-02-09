@@ -3,8 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Server, Activity, Pause, RotateCcw, Loader2 } from 'lucide-react'
-import { workersApi } from '@/lib/api'
+import { Server, Activity, Pause, RotateCcw, Loader2, Copy, Check, Wifi, Terminal } from 'lucide-react'
+import { workersApi, clusterApi, TailscalePeer, JoinInstructions } from '@/lib/api'
 
 interface WorkerData {
   id: string
@@ -26,16 +26,62 @@ interface WorkerData {
 
 export function WorkersManager() {
   const [workers, setWorkers] = useState<WorkerData[]>([])
+  const [tailscalePeers, setTailscalePeers] = useState<TailscalePeer[]>([])
+  const [joinCommand, setJoinCommand] = useState<JoinInstructions | null>(null)
+  const [tailscaleEnabled, setTailscaleEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    const fetchWorkers = async () => {
+    const fetchData = async () => {
       try {
-        const master = await workersApi.getMaster()
+        // Fetch all data in parallel
+        const [master, remoteWorkers, tailscaleData, joinData] = await Promise.all([
+          workersApi.getMaster(),
+          workersApi.list().catch(() => [] as WorkerData[]),
+          clusterApi.getTailscalePeers().catch(() => ({ enabled: false, peers: [] })),
+          clusterApi.getJoinCommand().catch(() => null),
+        ])
         
-        // Master is always first
+        // Master is always first, then merge any registered remote workers
         const allWorkers: WorkerData[] = [master as WorkerData]
+        const registeredHostnames = new Set<string>([(master as any).hostname])
+        
+        // Remote workers come from the /workers endpoint (registered via CLI)
+        for (const rw of remoteWorkers as any[]) {
+          if (rw.worker_id === 'master' || rw.hostname === (master as any).hostname) continue
+          
+          registeredHostnames.add(rw.hostname)
+          allWorkers.push({
+            id: rw.worker_id || rw.id,
+            hostname: rw.hostname,
+            role: 'worker',
+            status: rw.status || 'offline',
+            ip: rw.ip_address || rw.ip || '',
+            cpu_count: rw.cpu_count || 0,
+            cpu_percent: 0,
+            ram_total_gb: rw.total_ram_gb || 0,
+            ram_used_gb: (rw.total_ram_gb || 0) - (rw.available_ram_gb || 0),
+            ram_percent: rw.total_ram_gb ? Math.round(((rw.total_ram_gb - (rw.available_ram_gb || 0)) / rw.total_ram_gb) * 100) : 0,
+            gpu_name: rw.gpu_names ? JSON.parse(rw.gpu_names)[0] : undefined,
+            vram_total_gb: rw.total_vram_gb || undefined,
+            uptime: rw.status === 'online' ? 'connected' : 'offline',
+          })
+        }
+        
         setWorkers(allWorkers)
+        setTailscaleEnabled(tailscaleData.enabled)
+        setJoinCommand(joinData)
+        
+        // Filter Tailscale peers to only show ones not already registered
+        if (tailscaleData.enabled && tailscaleData.peers) {
+          const unregisteredPeers = tailscaleData.peers.filter(
+            (p: TailscalePeer) => !registeredHostnames.has(p.hostname)
+          )
+          setTailscalePeers(unregisteredPeers)
+        } else {
+          setTailscalePeers([])
+        }
       } catch (err) {
         console.error('Failed to fetch workers:', err)
       } finally {
@@ -43,10 +89,18 @@ export function WorkersManager() {
       }
     }
 
-    fetchWorkers()
-    const interval = setInterval(fetchWorkers, 5000)
+    fetchData()
+    const interval = setInterval(fetchData, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  const copyCommand = () => {
+    if (joinCommand?.command) {
+      navigator.clipboard.writeText(joinCommand.command)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
 
   const onlineWorkers = workers.filter(w => w.status === 'online').length
   const totalWorkers = workers.length
@@ -248,6 +302,104 @@ export function WorkersManager() {
           )}
         </CardContent>
       </Card>
+
+      {/* Tailscale Discoverable Devices */}
+      {tailscaleEnabled && (
+        <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-cyan-500/10 before:via-transparent before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-cyan-500/12">
+          <CardHeader className="relative">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Wifi className="w-5 h-5 text-cyan-500" />
+                  Tailscale Network
+                </CardTitle>
+                <CardDescription>
+                  Devices on your Tailscale mesh that can become workers
+                </CardDescription>
+              </div>
+              <Badge variant="outline" className="text-cyan-400 border-cyan-500/30">
+                <Wifi className="w-3 h-3 mr-1" />
+                {tailscalePeers.length} discoverable
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 relative">
+            {/* Join Command */}
+            {joinCommand && (
+              <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-zinc-300">
+                    <Terminal className="w-4 h-4" />
+                    Run this on any Tailscale peer to join as worker:
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={copyCommand}
+                    className="text-zinc-400 hover:text-cyan-400"
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <code className="block p-3 rounded bg-zinc-900 text-cyan-400 text-xs font-mono overflow-x-auto">
+                  {joinCommand.command}
+                </code>
+              </div>
+            )}
+
+            {/* Peer List */}
+            {tailscalePeers.length > 0 ? (
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-zinc-400">Discoverable Devices</div>
+                {tailscalePeers.map((peer) => (
+                  <div key={peer.id} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/30">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded flex items-center justify-center ${peer.online ? 'bg-cyan-600/20' : 'bg-zinc-700/50'}`}>
+                        <Server className={`w-4 h-4 ${peer.online ? 'text-cyan-400' : 'text-zinc-500'}`} />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium">{peer.hostname}</div>
+                        <div className="text-xs text-muted-foreground font-mono">
+                          {peer.tailscale_ip} • {peer.os || 'unknown'}
+                        </div>
+                      </div>
+                    </div>
+                    <Badge variant={peer.online ? 'success' : 'secondary'} className="text-xs">
+                      {peer.online ? 'reachable' : 'offline'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 rounded-lg bg-zinc-800/30 text-center text-zinc-500 text-sm">
+                All Tailscale peers are already registered as workers, or no peers found.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* No Tailscale - Show instructions */}
+      {!tailscaleEnabled && !loading && (
+        <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-amber-500/10 before:via-transparent before:to-transparent before:opacity-30">
+          <CardHeader className="relative">
+            <CardTitle className="flex items-center gap-2">
+              <Wifi className="w-5 h-5 text-amber-500" />
+              Enable Distributed Training
+            </CardTitle>
+            <CardDescription>
+              Connect multiple devices using Tailscale for distributed compute
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="relative">
+            <div className="space-y-3 text-sm text-zinc-400">
+              <p>1. Install Tailscale on all devices: <a href="https://tailscale.com/download" target="_blank" className="text-cyan-400 hover:underline">tailscale.com/download</a></p>
+              <p>2. Run <code className="px-2 py-1 rounded bg-zinc-800 text-cyan-400">tailscale up</code> on each device</p>
+              <p>3. All devices on the same tailnet can share compute load automatically</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
