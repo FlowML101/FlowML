@@ -246,6 +246,24 @@ export const resultsApi = {
     return handleResponse<TrainedModel[]>(response)
   },
 
+  getMetadata: async (modelId: string): Promise<{
+    model_id: string;
+    algorithm: string;
+    problem_type: string;
+    feature_names: string[];
+    numeric_features: string[];
+    categorical_features: string[];
+    low_cardinality_features: string[];
+    high_cardinality_features: string[];
+    categorical_modes: Record<string, string>;
+    numeric_medians: Record<string, number>;
+    numeric_stats?: Record<string, { min: number; max: number; mean: number; median: number; std: number }>;
+    onehot_categories: Record<string, string[]>;
+  }> => {
+    const response = await fetch(`${API_BASE}/results/model/${modelId}/metadata`)
+    return handleResponse(response)
+  },
+
   // New analysis endpoints
   featureImportance: async (modelId: string): Promise<{
     model_id: string;

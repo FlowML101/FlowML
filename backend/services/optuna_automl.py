@@ -29,6 +29,7 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.metrics import (
     accuracy_score, f1_score, precision_score, recall_score, roc_auc_score,
     mean_squared_error, mean_absolute_error, r2_score
@@ -111,6 +112,104 @@ LIGHTGBM_GPU_AVAILABLE = LIGHTGBM_AVAILABLE and GPU_AVAILABLE
 
 logger.info(f"GPU Detection: available={GPU_AVAILABLE}, count={GPU_COUNT}, vram={GPU_VRAM_GB}GB, name={GPU_NAME}")
 logger.info(f"GPU Training: XGBoost={XGBOOST_GPU_AVAILABLE}, LightGBM={LIGHTGBM_GPU_AVAILABLE}")
+
+
+class DataPreprocessor(BaseEstimator, TransformerMixin):
+    """
+    Custom preprocessor that handles:
+    - Numeric: fill NaN with median
+    - Categorical: fill NaN with mode, one-hot or label encode
+    - Preserves exact transformation for inference time
+    """
+    
+    def __init__(self, max_onehot_cardinality: int = 50):
+        self.max_onehot_cardinality = max_onehot_cardinality
+        self.numeric_cols = []
+        self.categorical_cols = []
+        self.low_card_cols = []
+        self.high_card_cols = []
+        self.numeric_medians = {}
+        self.categorical_modes = {}
+        self.onehot_categories = {}
+        self.label_encoders = {}
+        self.feature_names_out = []
+        self.original_features = []
+        
+    def fit(self, X: pd.DataFrame, y=None):
+        """Learn preprocessing parameters from training data"""
+        self.original_features = X.columns.tolist()
+        
+        # Identify column types
+        self.numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+        self.categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+        
+        # Store medians for numeric columns
+        for col in self.numeric_cols:
+            self.numeric_medians[col] = X[col].median()
+        
+        # Store modes and categorize categorical columns
+        for col in self.categorical_cols:
+            mode_val = X[col].mode().iloc[0] if len(X[col].mode()) > 0 else "MISSING"
+            self.categorical_modes[col] = mode_val
+            
+            n_unique = X[col].nunique()
+            if n_unique <= self.max_onehot_cardinality:
+                self.low_card_cols.append(col)
+                # Store categories for one-hot encoding
+                self.onehot_categories[col] = sorted(X[col].dropna().unique().tolist())
+            else:
+                self.high_card_cols.append(col)
+                # Fit label encoder
+                le = LabelEncoder()
+                le.fit(X[col].fillna(mode_val).astype(str))
+                self.label_encoders[col] = le
+        
+        # Compute output feature names
+        X_temp = self._transform_internal(X.copy())
+        self.feature_names_out = X_temp.columns.tolist()
+        
+        return self
+    
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Apply learned preprocessing to new data"""
+        return self._transform_internal(X.copy())
+    
+    def _transform_internal(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Internal transform logic"""
+        # Fill numeric NaN with median
+        for col in self.numeric_cols:
+            if col in X.columns:
+                X[col] = X[col].fillna(self.numeric_medians.get(col, 0))
+        
+        # Fill categorical NaN with mode
+        for col in self.categorical_cols:
+            if col in X.columns:
+                X[col] = X[col].fillna(self.categorical_modes.get(col, "MISSING"))
+        
+        # One-hot encode low cardinality columns
+        if self.low_card_cols:
+            cols_to_encode = [c for c in self.low_card_cols if c in X.columns]
+            if cols_to_encode:
+                X = pd.get_dummies(X, columns=cols_to_encode, drop_first=True)
+        
+        # Label encode high cardinality columns
+        for col in self.high_card_cols:
+            if col in X.columns:
+                le = self.label_encoders.get(col)
+                if le:
+                    # Handle unknown categories by mapping to -1
+                    X[col] = X[col].astype(str).apply(
+                        lambda x: le.transform([x])[0] if x in le.classes_ else -1
+                    )
+        
+        # Ensure all expected features are present (in correct order)
+        if self.feature_names_out:
+            for feat in self.feature_names_out:
+                if feat not in X.columns:
+                    X[feat] = 0  # Add missing features as 0
+            X = X[self.feature_names_out]  # Reorder columns
+        
+        return X
 
 
 class ProblemType(str, Enum):
@@ -479,7 +578,7 @@ class OptunaAutoML:
         target_column: str,
         max_rows: int = 100000,
         max_onehot_cardinality: int = 50,
-    ) -> Tuple[np.ndarray, np.ndarray, List[str], Optional[LabelEncoder]]:
+    ) -> Tuple[np.ndarray, np.ndarray, List[str], Optional[LabelEncoder], DataPreprocessor]:
         """
         Preprocess data for ML training.
         
@@ -494,6 +593,7 @@ class OptunaAutoML:
             y: Target vector
             feature_names: List of feature names
             label_encoder: LabelEncoder if classification, else None
+            preprocessor: DataPreprocessor object for reuse at inference
         """
         # Sample if dataset is too large
         if len(df) > max_rows:
@@ -510,39 +610,14 @@ class OptunaAutoML:
             label_encoder = LabelEncoder()
             y = label_encoder.fit_transform(y)
         
-        # Identify column types
-        numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
-        categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+        # Use the new DataPreprocessor
+        preprocessor = DataPreprocessor(max_onehot_cardinality=max_onehot_cardinality)
+        preprocessor.fit(X)
+        X_transformed = preprocessor.transform(X)
         
-        # Simple preprocessing: fill numeric NaN with median, categorical with mode
-        for col in numeric_cols:
-            X[col] = X[col].fillna(X[col].median())
+        feature_names = X_transformed.columns.tolist()
         
-        # Handle categorical columns with cardinality limit
-        low_cardinality_cols = []
-        high_cardinality_cols = []
-        
-        for col in categorical_cols:
-            X[col] = X[col].fillna(X[col].mode().iloc[0] if len(X[col].mode()) > 0 else "MISSING")
-            n_unique = X[col].nunique()
-            if n_unique <= max_onehot_cardinality:
-                low_cardinality_cols.append(col)
-            else:
-                high_cardinality_cols.append(col)
-                logger.info(f"Column '{col}' has {n_unique} unique values - using label encoding instead of one-hot")
-        
-        # One-hot encode low cardinality columns
-        if low_cardinality_cols:
-            X = pd.get_dummies(X, columns=low_cardinality_cols, drop_first=True)
-        
-        # Label encode high cardinality columns
-        for col in high_cardinality_cols:
-            le = LabelEncoder()
-            X[col] = le.fit_transform(X[col].astype(str))
-        
-        feature_names = X.columns.tolist()
-        
-        return X.values, np.array(y), feature_names, label_encoder
+        return X_transformed.values, np.array(y), feature_names, label_encoder, preprocessor
     
     def train(
         self,
@@ -627,7 +702,7 @@ class OptunaAutoML:
         check_cancelled()
         
         # Preprocess
-        X, y, feature_names, label_encoder = self.preprocess_data(df, target_column)
+        X, y, feature_names, label_encoder, preprocessor = self.preprocess_data(df, target_column)
         
         # Detect problem type
         if problem_type is None or problem_type == "auto":
@@ -728,13 +803,89 @@ class OptunaAutoML:
                 result.params
             )
             best_model.fit(X, y)
+            
+            # Save model with preprocessing pipeline
             joblib.dump({
                 "model": best_model,
+                "preprocessor": preprocessor,
                 "feature_names": feature_names,
                 "label_encoder": label_encoder,
                 "problem_type": problem_type,
             }, model_path)
             result.model_path = str(model_path)
+            
+            # Calculate statistics for numeric features (ORIGINAL columns)
+            numeric_stats_original = {}
+            for col in preprocessor.numeric_cols:
+                if col in df.columns:
+                    col_data = df[col].dropna()
+                    if len(col_data) > 0:
+                        numeric_stats_original[col] = {
+                            "min": float(col_data.min()),
+                            "max": float(col_data.max()),
+                            "mean": float(col_data.mean()),
+                            "median": float(col_data.median()),
+                            "std": float(col_data.std()) if len(col_data) > 1 else 0.0,
+                        }
+            
+            # Identify numeric vs categorical in TRANSFORMED space
+            # All original numeric cols remain numeric
+            numeric_features_transformed = [col for col in preprocessor.numeric_cols if col in feature_names]
+            
+            # All one-hot encoded dummy columns are binary (0/1) - treat as categorical with 2 options
+            binary_features = []
+            for orig_col in preprocessor.low_card_cols:
+                # Find all dummy columns created from this original column
+                for feat in feature_names:
+                    if feat.startswith(f"{orig_col}_"):
+                        binary_features.append(feat)
+            
+            # High-cardinality label-encoded columns remain categorical
+            categorical_features_transformed = [col for col in preprocessor.high_card_cols if col in feature_names]
+            
+            # Build stats for transformed features
+            numeric_stats = {}
+            for col in numeric_features_transformed:
+                if col in numeric_stats_original:
+                    numeric_stats[col] = numeric_stats_original[col]
+            
+            # Binary features get simple 0/1 stats
+            for col in binary_features:
+                numeric_stats[col] = {"min": 0, "max": 1, "mean": 0.5, "median": 0, "std": 0.5}
+            
+            # Build onehot_categories for TRANSFORMED space
+            onehot_categories_transformed = {}
+            for feat in binary_features:
+                onehot_categories_transformed[feat] = ['0', '1']
+            
+            # Save metadata.json for each model
+            metadata = {
+                "model_id": result.model_path.split("/")[-1].replace(".joblib", ""),
+                "algorithm": result.algorithm,
+                "rank": result.rank,
+                "problem_type": problem_type,
+                "target_column": target_column,
+                "feature_names": feature_names,  # Use TRANSFORMED features for UI
+                "feature_names_original": preprocessor.original_features,  # Original before one-hot
+                "numeric_features": numeric_features_transformed,  # Numeric in transformed space
+                "categorical_features": categorical_features_transformed,  # Categorical in transformed space
+                "binary_features": binary_features,  # One-hot encoded dummies
+                "low_cardinality_features": preprocessor.low_card_cols,
+                "high_cardinality_features": preprocessor.high_card_cols,
+                "categorical_modes": preprocessor.categorical_modes,
+                "numeric_medians": {k: float(v) if not pd.isna(v) else None for k, v in preprocessor.numeric_medians.items()},
+                "numeric_stats": numeric_stats,  # Stats for transformed features
+                "onehot_categories": onehot_categories_transformed,  # Categories for transformed features
+                "metrics": result.metrics,
+                "params": result.params,
+                "training_time": result.training_time,
+                "created_at": datetime.now().isoformat(),
+            }
+            
+            # Save metadata.json
+            metadata_path = output_dir / f"model_{result.rank}_{result.algorithm}_metadata.json"
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
         
         # Build result
         total_time = time.time() - start_time

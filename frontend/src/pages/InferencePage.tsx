@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { FlaskConical, Play, Sparkles, TrendingUp, AlertCircle, Loader2, Activity, RefreshCw } from 'lucide-react'
+import { FlaskConical, Play, Sparkles, TrendingUp, AlertCircle, Loader2, Activity, RefreshCw, Wand2, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { resultsApi, trainingApi, type TrainedModel, type Job } from '@/lib/api'
 
@@ -20,7 +20,10 @@ export function InferencePage() {
   const [modelsLoading, setModelsLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>('')
+  const [modelMetadata, setModelMetadata] = useState<any>(null)
+  const [metadataLoading, setMetadataLoading] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [groupsCollapsed, setGroupsCollapsed] = useState<Record<string, boolean>>({})
   const [prediction, setPrediction] = useState<{
     survived: boolean
     confidence: number
@@ -28,15 +31,12 @@ export function InferencePage() {
     latency: number
   } | null>(null)
   
-  const [inputData, setInputData] = useState({
-    pclass: '1',
-    sex: 'female',
-    age: '29',
-    sibsp: '0',
-    parch: '0',
-    fare: '75.00',
-    embarked: 'C',
-  })
+  const [inputData, setInputData] = useState<Record<string, any>>({})
+
+  // Debug: Log when inputData changes
+  useEffect(() => {
+    console.log('inputData state updated:', inputData)
+  }, [inputData])
 
   // Filter models by selected job
   const filteredModels = useMemo(() => {
@@ -91,6 +91,234 @@ export function InferencePage() {
     }
   }, [filteredModels, selectedModel])
 
+  // Fetch metadata when model is selected
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      if (!selectedModel) {
+        setModelMetadata(null)
+        setInputData({})
+        return
+      }
+
+      setMetadataLoading(true)
+      try {
+        const metadata = await resultsApi.getMetadata(selectedModel)
+        console.log('📊 LOADED METADATA:', metadata)
+        console.log('Feature names:', metadata.feature_names)
+        console.log('Numeric features:', metadata.numeric_features)
+        console.log('Categorical features:', metadata.categorical_features)
+        console.log('Categories:', metadata.onehot_categories)
+        console.log('Numeric stats:', metadata.numeric_stats)
+        setModelMetadata(metadata)
+        
+        // Initialize input data with default values (but keep empty for manual entry)
+        const defaults: Record<string, any> = {}
+        for (const feature of metadata.feature_names || []) {
+          defaults[feature] = ''
+        }
+        setInputData(defaults)
+        
+        // Initialize all groups as expanded by default
+        setGroupsCollapsed({})
+      } catch (err) {
+        console.error('Failed to load model metadata:', err)
+        // Fallback for old models without metadata - show basic titanic fields
+        const fallbackMetadata = {
+          feature_names: ['pclass', 'sex', 'age', 'sibsp', 'parch', 'fare', 'embarked'],
+          numeric_features: ['age', 'sibsp', 'parch', 'fare', 'pclass'],
+          categorical_features: ['sex', 'embarked'],
+          onehot_categories: {
+            sex: ['male', 'female'],
+            embarked: ['C', 'Q', 'S']
+          },
+          categorical_modes: {
+            sex: 'male',
+            embarked: 'S'
+          },
+          numeric_medians: {
+            age: 28,
+            sibsp: 0,
+            parch: 0,
+            fare: 14.5,
+            pclass: 3
+          },
+          numeric_stats: {
+            age: { min: 0.42, max: 80, mean: 29.7, median: 28, std: 14 },
+            sibsp: { min: 0, max: 8, mean: 0.5, median: 0, std: 1 },
+            parch: { min: 0, max: 6, mean: 0.4, median: 0, std: 0.8 },
+            fare: { min: 0, max: 512, mean: 32, median: 14.5, std: 50 },
+            pclass: { min: 1, max: 3, mean: 2.3, median: 3, std: 0.8 }
+          }
+        }
+        console.log('Using fallback metadata for old model:', fallbackMetadata)
+        setModelMetadata(fallbackMetadata)
+        setInputData({
+          pclass: '',
+          sex: '',
+          age: '',
+          sibsp: '',
+          parch: '',
+          fare: '',
+          embarked: ''
+        })
+      } finally {
+        setMetadataLoading(false)
+      }
+    }
+
+    fetchMetadata()
+  }, [selectedModel])
+
+  const handleAutoFill = () => {
+    if (!modelMetadata) {
+      console.log('No metadata available for autofill')
+      return
+    }
+    
+    console.log('Starting autofill with metadata:', modelMetadata)
+    
+    // Example values for common titanic features (fallback)
+    const exampleDefaults: Record<string, any> = {
+      pclass: '3',
+      sex: 'male',
+      age: '20-30',
+      sibsp: '0',
+      parch: '0',
+      fare: '7.25',
+      embarked: 'S'
+    }
+    
+    const exampleData: Record<string, any> = {}
+    for (const feature of modelMetadata.feature_names || []) {
+      if (modelMetadata.binary_features?.includes(feature)) {
+        // Binary features: use 0 as default
+        exampleData[feature] = '0'
+        console.log(`${feature} (binary): 0`)
+      } else if (modelMetadata.numeric_features?.includes(feature)) {
+        const stats = modelMetadata.numeric_stats?.[feature]
+        const numericOptions = getNumericOptions(feature, stats)
+        
+        if (numericOptions && numericOptions.length > 0) {
+          // Use middle option from dropdown
+          const middleIndex = Math.floor(numericOptions.length / 2)
+          exampleData[feature] = numericOptions[middleIndex]
+          console.log(`${feature} (numeric dropdown): ${numericOptions[middleIndex]}`)
+        } else {
+          // Use median/mean as before
+          let numValue = stats?.median || stats?.mean || modelMetadata.numeric_medians?.[feature]
+          
+          if (numValue !== undefined && numValue !== null) {
+            if (Number.isInteger(numValue) || feature.toLowerCase().includes('count')) {
+              exampleData[feature] = String(Math.round(numValue))
+            } else {
+              exampleData[feature] = String(Number(numValue).toFixed(2))
+            }
+          } else {
+            exampleData[feature] = exampleDefaults[feature] || '0'
+          }
+          console.log(`${feature} (numeric input): ${exampleData[feature]}`)
+        }
+      } else if (modelMetadata.categorical_features?.includes(feature)) {
+        exampleData[feature] = modelMetadata.categorical_modes?.[feature] || 
+                              modelMetadata.onehot_categories?.[feature]?.[0] ||
+                              exampleDefaults[feature] || ''
+        console.log(`${feature} (categorical): ${exampleData[feature]}`)
+      } else {
+        exampleData[feature] = exampleDefaults[feature] || ''
+        console.log(`${feature} (other): ${exampleData[feature]}`)
+      }
+    }
+    
+    console.log('Final autofill data:', exampleData)
+    console.log('Current inputData before update:', inputData)
+    setInputData(exampleData)
+    console.log('setInputData called with:', exampleData)
+  }
+
+  // Helper to generate dropdown options for numeric features
+  const getNumericOptions = (feature: string, stats: any) => {
+    console.log(`🔍 getNumericOptions called for ${feature}:`, stats)
+    
+    const featureLower = feature.toLowerCase()
+    
+    // Check for common feature patterns and provide smart options
+    if (featureLower.includes('class') || featureLower === 'pclass') {
+      console.log(`  → Pattern match: class → ['1','2','3']`)
+      return ['1', '2', '3']
+    }
+    
+    if (featureLower.includes('age')) {
+      console.log(`  → Pattern match: age → range bins`)
+      return ['0-10', '10-20', '20-30', '30-40', '40-50', '50-60', '60-70', '70-80', '80+']
+    }
+    
+    if (featureLower.includes('sibsp') || featureLower.includes('parch') || featureLower.includes('siblings') || featureLower.includes('parents')) {
+      console.log(`  → Pattern match: siblings/parents → ['0'-'5+']`)
+      return ['0', '1', '2', '3', '4', '5+']
+    }
+    
+    if (stats && stats.min !== undefined && stats.max !== undefined) {
+      const range = stats.max - stats.min
+      const min = stats.min
+      const max = stats.max
+      
+      console.log(`  → Stats available: min=${min}, max=${max}, range=${range}`)
+      
+      // If small integer range (like 0-10), show each value
+      if (range <= 15 && Number.isInteger(min) && Number.isInteger(max)) {
+        const options = []
+        for (let i = Math.floor(min); i <= Math.ceil(max); i++) {
+          options.push(String(i))
+        }
+        console.log(`  → Small integer range → ${options.length} options`)
+        return options
+      }
+      
+      // For larger ranges, create bins
+      if (range > 0) {
+        const bins = 8
+        const step = range / bins
+        const options = []
+        for (let i = 0; i < bins; i++) {
+          const rangeStart = (min + i * step).toFixed(1)
+          const rangeEnd = (min + (i + 1) * step).toFixed(1)
+          options.push(`${rangeStart}-${rangeEnd}`)
+        }
+        console.log(`  → Large range → ${bins} bins`)
+        return options
+      }
+    }
+    
+    console.log(`  → No match, returning null → will use text input`)
+    return null // Return null to use text input
+  }
+
+  // Helper to parse range values back to numbers
+  const parseRangeValue = (value: string): string => {
+    if (value.includes('-')) {
+      // Return midpoint of range
+      const parts = value.split('-')
+      const start = parseFloat(parts[0])
+      const end = parseFloat(parts[1])
+      return String((start + end) / 2)
+    }
+    if (value.includes('+')) {
+      // For "5+" return the number
+      return value.replace('+', '')
+    }
+    return value
+  }
+
+  const handleClear = () => {
+    if (!modelMetadata) return
+    
+    const emptyData: Record<string, any> = {}
+    for (const feature of modelMetadata.feature_names || []) {
+      emptyData[feature] = ''
+    }
+    setInputData(emptyData)
+  }
+
   const handlePredict = async () => {
     setIsLoading(true)
     setPrediction(null)
@@ -98,14 +326,27 @@ export function InferencePage() {
     const startTime = Date.now()
     
     try {
-      const features = {
-        pclass: parseInt(inputData.pclass),
-        sex: inputData.sex,
-        age: parseFloat(inputData.age),
-        sibsp: parseInt(inputData.sibsp),
-        parch: parseInt(inputData.parch),
-        fare: parseFloat(inputData.fare),
-        embarked: inputData.embarked,
+      // Convert string inputs to appropriate types
+      const features: Record<string, any> = {}
+      
+      if (modelMetadata) {
+        for (const [key, value] of Object.entries(inputData)) {
+          if (modelMetadata.numeric_features?.includes(key)) {
+            // Parse range values (e.g., "20-30" becomes 25)
+            const parsedValue = parseRangeValue(String(value))
+            // Convert to number
+            features[key] = parsedValue === '' ? null : parseFloat(parsedValue)
+          } else {
+            // Keep as string for categorical
+            features[key] = value
+          }
+        }
+      } else {
+        // Fallback: try to parse numbers
+        for (const [key, value] of Object.entries(inputData)) {
+          const parsed = parseFloat(value as string)
+          features[key] = isNaN(parsed) ? value : parsed
+        }
       }
       
       const result = await resultsApi.predict(selectedModel, features)
@@ -121,10 +362,8 @@ export function InferencePage() {
       })
     } catch (err) {
       console.error('Prediction failed:', err)
-      // Show error instead of fake demo data
       setPrediction(null)
       const currentModelData = filteredModels.find(m => m.id === selectedModel)
-      // Use toast to show error (import toast from sonner at top)
       import('sonner').then(({ toast }) => {
         toast.error('Prediction failed', {
           description: currentModelData 
@@ -254,116 +493,210 @@ export function InferencePage() {
           {/* Input Form */}
           <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-blue-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/12">
             <CardHeader className="relative">
-              <CardTitle>Input Features</CardTitle>
-              <CardDescription>Enter passenger details for prediction</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Input Features</CardTitle>
+                  <CardDescription>
+                    {modelMetadata 
+                      ? `Enter values for ${modelMetadata.feature_names?.length || 0} features`
+                      : 'Select a model to see input fields'}
+                  </CardDescription>
+                </div>
+                {modelMetadata && (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAutoFill}
+                      className="gap-2 bg-purple-600/20"
+                    >
+                      <Wand2 className="w-4 h-4" />
+                      Auto-Fill v2
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClear}
+                      className="gap-2"
+                    >
+                      <X className="w-4 h-4" />
+                      Clear
+                    </Button>
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 relative">
-              {/* Passenger Class */}
-              <div className="space-y-2">
-                <Label htmlFor="pclass">Passenger Class</Label>
-                <Select
-                  value={inputData.pclass}
-                  onValueChange={(value) => setInputData({ ...inputData, pclass: value })}
-                >
-                  <SelectTrigger id="pclass">
-                    <SelectValue placeholder="Select class" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1st Class</SelectItem>
-                    <SelectItem value="2">2nd Class</SelectItem>
-                    <SelectItem value="3">3rd Class</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Sex */}
-              <div className="space-y-2">
-                <Label htmlFor="sex">Sex</Label>
-                <Select
-                  value={inputData.sex}
-                  onValueChange={(value) => setInputData({ ...inputData, sex: value })}
-                >
-                  <SelectTrigger id="sex">
-                    <SelectValue placeholder="Select sex" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="male">Male</SelectItem>
-                    <SelectItem value="female">Female</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Age */}
-              <div className="space-y-2">
-                <Label htmlFor="age">Age</Label>
-                <Input
-                  id="age"
-                  type="number"
-                  placeholder="Enter age"
-                  value={inputData.age}
-                  onChange={(e) => setInputData({ ...inputData, age: e.target.value })}
-                />
-              </div>
-
-              {/* Siblings/Spouses */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="sibsp">Siblings/Spouses Aboard</Label>
-                  <Input
-                    id="sibsp"
-                    type="number"
-                    placeholder="0"
-                    value={inputData.sibsp}
-                    onChange={(e) => setInputData({ ...inputData, sibsp: e.target.value })}
-                  />
+              {metadataLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="parch">Parents/Children Aboard</Label>
-                  <Input
-                    id="parch"
-                    type="number"
-                    placeholder="0"
-                    value={inputData.parch}
-                    onChange={(e) => setInputData({ ...inputData, parch: e.target.value })}
-                  />
+              ) : modelMetadata && modelMetadata.feature_names ? (
+                <>
+                  {(() => {
+                    const features = modelMetadata.feature_names
+                    const numericFeatures = features.filter((f: string) => modelMetadata.numeric_features?.includes(f))
+                    const binaryFeatures = features.filter((f: string) => modelMetadata.binary_features?.includes(f))
+                    const categoricalFeatures = features.filter((f: string) => modelMetadata.categorical_features?.includes(f))
+                    const shouldCollapse = features.length > 12  // Only collapse if more than 12 features
+                    
+                    const renderFeature = (feature: string) => {
+                      const isNumeric = modelMetadata.numeric_features?.includes(feature)
+                      const isBinary = modelMetadata.binary_features?.includes(feature)
+                      const isCategorical = modelMetadata.categorical_features?.includes(feature)
+                      const categories = modelMetadata.onehot_categories?.[feature]
+                      const stats = modelMetadata.numeric_stats?.[feature]
+                      const numericOptions = isNumeric ? getNumericOptions(feature, stats) : null
+                      
+                      console.log(`🎨 Rendering ${feature}:`, { 
+                        isNumeric, 
+                        isBinary,
+                        isCategorical, 
+                        hasCategories: categories?.length > 0, 
+                        hasStats: !!stats,
+                        numericOptions 
+                      })
+                      
+                      return (
+                        <div key={feature} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor={feature} className="capitalize">
+                              {feature.replace(/_/g, ' ')}
+                            </Label>
+                            {isNumeric && stats && !numericOptions && (
+                              <span className="text-xs text-muted-foreground">
+                                {stats.min?.toFixed(0)}-{stats.max?.toFixed(0)} (avg: {stats.mean?.toFixed(1)})
+                              </span>
+                            )}
+                          </div>
+                          
+                          {(isBinary || isCategorical) && categories && categories.length > 0 ? (
+                            // Binary or Categorical dropdown
+                            <Select
+                              value={String(inputData[feature] || '')}
+                              onValueChange={(value) => setInputData({ ...inputData, [feature]: value })}
+                            >
+                              <SelectTrigger id={feature}>
+                                <SelectValue placeholder={`Select ${feature}`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {categories.map((cat: string) => (
+                                  <SelectItem key={cat} value={cat}>
+                                    {cat}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : numericOptions ? (
+                            // Numeric dropdown with preset options
+                            <Select
+                              value={String(inputData[feature] || '')}
+                              onValueChange={(value) => {
+                                const parsedValue = parseRangeValue(value)
+                                setInputData({ ...inputData, [feature]: parsedValue })
+                              }}
+                            >
+                              <SelectTrigger id={feature}>
+                                <SelectValue placeholder={`Select ${feature}`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {numericOptions.map((option: string) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            // Text/number input for other fields
+                            <Input
+                              id={feature}
+                              type={isNumeric ? "number" : "text"}
+                              step={isNumeric ? "any" : undefined}
+                              placeholder={isNumeric && stats ? `e.g., ${stats.median?.toFixed(1)}` : `Enter ${feature}`}
+                              value={inputData[feature] || ''}
+                              onChange={(e) => setInputData({ ...inputData, [feature]: e.target.value })}
+                            />
+                          )}
+                        </div>
+                      )
+                    }
+                    
+                    if (!shouldCollapse) {
+                      // Show all features without grouping (8 or fewer)
+                      return <div className="space-y-4">{features.map(renderFeature)}</div>
+                    }
+                    
+                    // Show collapsible groups for many features (9+)
+                    return (
+                      <div className="space-y-4">
+                        {numericFeatures.length > 0 && (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => setGroupsCollapsed({ ...groupsCollapsed, numeric: !groupsCollapsed.numeric })}
+                              className="flex items-center gap-2 text-sm font-medium hover:text-purple-400 transition-colors w-full text-left"
+                            >
+                              {groupsCollapsed.numeric ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              🔢 Numeric Features ({numericFeatures.length})
+                            </button>
+                            {!groupsCollapsed.numeric && (
+                              <div className="space-y-4 pl-6 border-l-2 border-purple-600/20">
+                                {numericFeatures.map(renderFeature)}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {binaryFeatures.length > 0 && (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => setGroupsCollapsed({ ...groupsCollapsed, binary: !groupsCollapsed.binary })}
+                              className="flex items-center gap-2 text-sm font-medium hover:text-green-400 transition-colors w-full text-left"
+                            >
+                              {groupsCollapsed.binary ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              ✓ Binary Features ({binaryFeatures.length})
+                            </button>
+                            {!groupsCollapsed.binary && (
+                              <div className="space-y-4 pl-6 border-l-2 border-green-600/20">
+                                {binaryFeatures.map(renderFeature)}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {categoricalFeatures.length > 0 && (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => setGroupsCollapsed({ ...groupsCollapsed, categorical: !groupsCollapsed.categorical })}
+                              className="flex items-center gap-2 text-sm font-medium hover:text-blue-400 transition-colors w-full text-left"
+                            >
+                              {groupsCollapsed.categorical ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              📝 Categorical Features ({categoricalFeatures.length})
+                            </button>
+                            {!groupsCollapsed.categorical && (
+                              <div className="space-y-4 pl-6 border-l-2 border-blue-600/20">
+                                {categoricalFeatures.map(renderFeature)}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No model metadata available. Select a trained model first.
                 </div>
-              </div>
-
-              {/* Fare */}
-              <div className="space-y-2">
-                <Label htmlFor="fare">Fare</Label>
-                <Input
-                  id="fare"
-                  type="number"
-                  step="0.01"
-                  placeholder="Enter fare amount"
-                  value={inputData.fare}
-                  onChange={(e) => setInputData({ ...inputData, fare: e.target.value })}
-                />
-              </div>
-
-              {/* Embarked */}
-              <div className="space-y-2">
-                <Label htmlFor="embarked">Port of Embarkation</Label>
-                <Select
-                  value={inputData.embarked}
-                  onValueChange={(value) => setInputData({ ...inputData, embarked: value })}
-                >
-                  <SelectTrigger id="embarked">
-                    <SelectValue placeholder="Select port" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="C">Cherbourg</SelectItem>
-                    <SelectItem value="Q">Queenstown</SelectItem>
-                    <SelectItem value="S">Southampton</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              )}
 
               {/* Predict Button */}
               <Button
                 onClick={handlePredict}
-                disabled={isLoading}
+                disabled={isLoading || !modelMetadata}
                 className="w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-purple-700 text-lg py-6"
               >
                 {isLoading ? (

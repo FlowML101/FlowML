@@ -135,6 +135,51 @@ async def download_model(
     )
 
 
+@router.get("/model/{model_id}/metadata")
+async def get_model_metadata(
+    model_id: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """Get model metadata including features, types, and preprocessing info"""
+    result = await session.execute(
+        select(TrainedModel).where(TrainedModel.id == model_id)
+    )
+    model = result.scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    if not model.model_path or not Path(model.model_path).exists():
+        raise HTTPException(status_code=404, detail="Model file not found")
+    
+    # Try to load metadata.json file
+    model_path = Path(model.model_path)
+    metadata_path = model_path.parent / f"{model_path.stem}_metadata.json"
+    
+    if metadata_path.exists():
+        import json
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        return metadata
+    else:
+        # Fallback: extract basic info from model file
+        try:
+            model_data = get_cached_model(str(model_path))
+            if isinstance(model_data, dict):
+                preprocessor = model_data.get("preprocessor")
+                return {
+                    "model_id": model_id,
+                    "problem_type": model_data.get("problem_type", "unknown"),
+                    "feature_names": preprocessor.original_features if preprocessor else model_data.get("feature_names", []),
+                    "numeric_features": preprocessor.numeric_cols if preprocessor else [],
+                    "categorical_features": preprocessor.categorical_cols if preprocessor else [],
+                    "low_cardinality_features": preprocessor.low_card_cols if preprocessor else [],
+                    "categorical_modes": preprocessor.categorical_modes if preprocessor else {},
+                    "onehot_categories": preprocessor.onehot_categories if preprocessor else {},
+                }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read metadata: {str(e)}")
+
+
 @router.post("/predict", response_model=PredictionResponse)
 async def predict(
     request: PredictionRequest,
@@ -154,25 +199,52 @@ async def predict(
     # Load and predict with caching
     start_time = time.time()
     try:
-        # Use cached model loader
-        model = get_cached_model(model_record.model_path)
+        # Use cached model loader - returns dict with model, preprocessor, feature_names, etc.
+        model_data = get_cached_model(model_record.model_path)
         
-        # PyCaret models expect DataFrame - import once at module level would be better
-        # but keeping here for clarity
+        # Extract components from the dict
+        if isinstance(model_data, dict):
+            model = model_data["model"]
+            preprocessor = model_data.get("preprocessor", None)
+            feature_names = model_data.get("feature_names", [])
+            label_encoder = model_data.get("label_encoder", None)
+        else:
+            # Legacy support for models saved directly
+            model = model_data
+            preprocessor = None
+            feature_names = []
+            label_encoder = None
+        
         import pandas as pd
-        input_df = pd.DataFrame([request.features])
+        
+        # Create DataFrame from input features
+        if preprocessor:
+            # Use original feature names (before one-hot encoding)
+            input_df = pd.DataFrame([request.features])
+            
+            # Apply the same preprocessing as during training
+            loop = asyncio.get_event_loop()
+            input_processed = await loop.run_in_executor(
+                None, lambda: preprocessor.transform(input_df)
+            )
+        else:
+            # Legacy: no preprocessor available, use features as-is
+            if feature_names:
+                input_processed = pd.DataFrame([{k: request.features.get(k) for k in feature_names}])
+            else:
+                input_processed = pd.DataFrame([request.features])
         
         # Run prediction in thread pool to not block event loop
         loop = asyncio.get_event_loop()
         prediction = await loop.run_in_executor(
-            None, lambda: model.predict(input_df)[0]
+            None, lambda: model.predict(input_processed)[0]
         )
         
         # Get probability if classification
         probability = None
         if hasattr(model, 'predict_proba'):
             proba = await loop.run_in_executor(
-                None, lambda: model.predict_proba(input_df)[0]
+                None, lambda: model.predict_proba(input_processed)[0]
             )
             probability = float(max(proba))
         
@@ -194,6 +266,24 @@ async def predict(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+
+@router.post("/models/{model_id}/predict", response_model=PredictionResponse)
+async def predict_by_model_id(
+    model_id: str,
+    features: dict,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Make a prediction using a trained model (frontend-friendly endpoint).
+    This endpoint takes model_id in the URL path instead of request body.
+    """
+    # Reuse the existing predict function by creating a PredictionRequest
+    request = PredictionRequest(
+        model_id=model_id,
+        features=features
+    )
+    return await predict(request, session)
 
 
 @router.get("/models", response_model=list[TrainedModelRead])
