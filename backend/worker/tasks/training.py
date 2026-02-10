@@ -575,6 +575,29 @@ def train_one_model(
             cancel_event=None,
         )
         
+        # Save the trained model
+        import joblib
+        from config import settings
+        
+        output_dir = settings.MODELS_DIR / job_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        model_path = output_dir / f"model_{model_name}.joblib"
+        
+        # Retrain with best params on full data for saving
+        best_model = model_def["class"](**result.params)
+        best_model.fit(X, y)
+        
+        # Save model with preprocessing info
+        joblib.dump({
+            "model": best_model,
+            "preprocessor": preprocessor,
+            "feature_names": feature_names,
+            "label_encoder": label_encoder,
+            "problem_type": problem_type,
+        }, model_path)
+        
+        logger.info(f"[{job_id}] Saved model to {model_path}")
+        
         elapsed = time.time() - start_time
         logger.info(f"[{job_id}] Worker {worker_hostname} completed {model_name} in {elapsed:.1f}s")
         
@@ -588,6 +611,7 @@ def train_one_model(
             "cv_scores": result.cv_scores,
             "training_time": result.training_time,
             "feature_importance": result.feature_importance,
+            "model_path": str(model_path),
             "worker": worker_hostname,
         }
         
@@ -661,6 +685,7 @@ def aggregate_distributed_results(
             "training_time": r.get("training_time", 0),
             "worker": r.get("worker", "unknown"),
             "feature_importance": r.get("feature_importance"),
+            "model_path": r.get("model_path"),
         })
     
     best_model = models[0]["algorithm"] if models else None
