@@ -7,6 +7,7 @@ This module provides Celery tasks for:
 - Model optimization with Optuna
 """
 import os
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +16,11 @@ from celery import shared_task, current_task
 from celery.exceptions import SoftTimeLimitExceeded
 from loguru import logger
 import threading
+
+# Ensure backend directory is in path for imports
+_backend_dir = Path(__file__).resolve().parent.parent.parent
+if str(_backend_dir) not in sys.path:
+    sys.path.insert(0, str(_backend_dir))
 
 from config import settings
 
