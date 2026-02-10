@@ -486,6 +486,36 @@ def train_one_model(
         # Load and preprocess data (each worker does this independently)
         import polars as pl
         import numpy as np
+        import os
+        
+        # Check if file exists locally, if not download from master
+        if not Path(dataset_path).exists():
+            master_url = os.getenv("MASTER_URL", "http://localhost:8000")
+            logger.info(f"[{job_id}] Dataset not found locally, downloading from master: {master_url}")
+            
+            import requests
+            import urllib.parse
+            
+            # URL encode the path
+            encoded_path = urllib.parse.quote(dataset_path, safe='')
+            download_url = f"{master_url}/api/datasets/download-by-path/{encoded_path}"
+            
+            try:
+                response = requests.get(download_url, timeout=300, stream=True)
+                response.raise_for_status()
+                
+                # Ensure local directory exists
+                local_path = Path(dataset_path)
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Save file
+                with open(local_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                logger.info(f"[{job_id}] Downloaded dataset to {local_path}")
+            except Exception as e:
+                raise FileNotFoundError(f"Failed to download dataset from master: {e}")
         
         if dataset_path.endswith('.parquet'):
             df = pl.read_parquet(dataset_path).to_pandas()

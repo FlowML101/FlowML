@@ -134,6 +134,68 @@ async def get_dataset(
     return dataset
 
 
+@router.get("/{dataset_id}/download")
+async def download_dataset(
+    dataset_id: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Download the raw dataset file.
+    Used by distributed workers to fetch data from master.
+    """
+    from fastapi.responses import FileResponse
+    
+    result = await session.execute(
+        select(Dataset).where(Dataset.id == dataset_id)
+    )
+    dataset = result.scalar_one_or_none()
+    if not dataset:
+        raise not_found("Dataset", dataset_id)
+    
+    file_path = Path(dataset.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Dataset file not found on disk")
+    
+    return FileResponse(
+        path=file_path,
+        filename=dataset.filename,
+        media_type="application/octet-stream"
+    )
+
+
+@router.get("/download-by-path/{path:path}")
+async def download_by_path(path: str):
+    """
+    Download a file by path (for distributed workers).
+    Path should be relative to backend directory.
+    """
+    from fastapi.responses import FileResponse
+    
+    # Security: only allow files in uploads directory
+    file_path = Path(path)
+    uploads_dir = Path("uploads").resolve()
+    
+    # Resolve to absolute path
+    if not file_path.is_absolute():
+        file_path = Path(".") / file_path
+    file_path = file_path.resolve()
+    
+    # Check it's within uploads
+    try:
+        file_path.relative_to(uploads_dir)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    return FileResponse(
+        path=file_path,
+        filename=file_path.name,
+        media_type="application/octet-stream"
+    )
+
+
 def _get_preview_sync(file_path: str, rows: int) -> tuple[list, list, dict]:
     """Get preview data in thread pool - supports multiple formats"""
     df = DataReader.read(file_path, ReadOptions(sample_rows=rows + 10))
