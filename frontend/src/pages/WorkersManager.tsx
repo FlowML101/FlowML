@@ -36,47 +36,24 @@ export function WorkersManager() {
     const fetchData = async () => {
       try {
         // Fetch all data in parallel
-        const [master, remoteWorkers, tailscaleData, joinData] = await Promise.all([
-          workersApi.getMaster(),
-          workersApi.list().catch(() => [] as WorkerData[]),
+        const [allWorkers, tailscaleData, joinData] = await Promise.all([
+          workersApi.getAll().catch(() => [] as WorkerData[]),
           clusterApi.getTailscalePeers().catch(() => ({ enabled: false, peers: [] })),
           clusterApi.getJoinCommand().catch(() => null),
         ])
         
-        // Master is always first, then merge any registered remote workers
-        const allWorkers: WorkerData[] = [master as WorkerData]
-        const registeredHostnames = new Set<string>([(master as any).hostname])
-        
-        // Remote workers come from the /workers endpoint (registered via CLI)
-        for (const rw of remoteWorkers as any[]) {
-          if (rw.worker_id === 'master' || rw.hostname === (master as any).hostname) continue
-          
-          registeredHostnames.add(rw.hostname)
-          allWorkers.push({
-            id: rw.worker_id || rw.id,
-            hostname: rw.hostname,
-            role: 'worker',
-            status: rw.status || 'offline',
-            ip: rw.ip_address || rw.ip || '',
-            cpu_count: rw.cpu_count || 0,
-            cpu_percent: 0,
-            ram_total_gb: rw.total_ram_gb || 0,
-            ram_used_gb: (rw.total_ram_gb || 0) - (rw.available_ram_gb || 0),
-            ram_percent: rw.total_ram_gb ? Math.round(((rw.total_ram_gb - (rw.available_ram_gb || 0)) / rw.total_ram_gb) * 100) : 0,
-            gpu_name: rw.gpu_names ? JSON.parse(rw.gpu_names)[0] : undefined,
-            vram_total_gb: rw.total_vram_gb || undefined,
-            uptime: rw.status === 'online' ? 'connected' : 'offline',
-          })
-        }
-        
-        setWorkers(allWorkers)
+        setWorkers(allWorkers as WorkerData[])
         setTailscaleEnabled(tailscaleData.enabled)
         setJoinCommand(joinData)
         
-        // Filter Tailscale peers to only show ones not already registered
+        // Filter Tailscale peers to only show ones not already connected
+        const connectedHostnames = new Set<string>(
+          (allWorkers as WorkerData[]).map(w => w.hostname?.toLowerCase() || '')
+        )
+        
         if (tailscaleData.enabled && tailscaleData.peers) {
           const unregisteredPeers = tailscaleData.peers.filter(
-            (p: TailscalePeer) => !registeredHostnames.has(p.hostname)
+            (p: TailscalePeer) => !connectedHostnames.has(p.hostname?.toLowerCase() || '')
           )
           setTailscalePeers(unregisteredPeers)
         } else {

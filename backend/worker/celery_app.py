@@ -77,9 +77,14 @@ celery_app.conf.update(
     
     # Task routes - must match actual @shared_task(name=...) values
     task_routes={
+        # AutoML training
         "worker.tasks.training.train_automl": {"queue": "cpu"},
         "worker.tasks.training.train_single_model": {"queue": "cpu"},
         "worker.tasks.training.get_training_status": {"queue": "cpu"},
+        # Distributed training (split across workers)
+        "worker.tasks.training.train_one_model": {"queue": "cpu"},
+        "worker.tasks.training.aggregate_distributed_results": {"queue": "cpu"},
+        # Other tasks
         "worker.tasks.preprocessing.preprocess_dataset": {"queue": "cpu"},
         "worker.tasks.inference.run_inference": {"queue": "cpu"},
         "worker.tasks.inference.run_inference_gpu": {"queue": "gpu"},

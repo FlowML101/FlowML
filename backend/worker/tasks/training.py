@@ -402,3 +402,311 @@ def get_training_status(job_id: str) -> Dict[str, Any]:
         "state": result.state,
         "info": result.info if result.info else {},
     }
+
+
+# =============================================================================
+# DISTRIBUTED TRAINING - Split compute across workers
+# =============================================================================
+
+@shared_task(
+    bind=True,
+    name="worker.tasks.training.train_one_model",
+    track_started=True,
+    time_limit=1800,  # 30 min max per model
+)
+def train_one_model(
+    self,
+    job_id: str,
+    dataset_path: str,
+    target_column: str,
+    model_name: str,
+    problem_type: str,
+    n_trials: int = 10,
+    cv_folds: int = 5,
+    time_budget_seconds: float = 120,
+) -> Dict[str, Any]:
+    """
+    Train ONE model type - designed to run on a distributed worker.
+    
+    Each worker picks up one model to train, enabling parallel training
+    across multiple machines.
+    
+    Args:
+        job_id: Parent job ID
+        dataset_path: Path to training data
+        target_column: Target column name
+        model_name: e.g. "random_forest", "xgboost"
+        problem_type: "classification" or "regression"
+        n_trials: Optuna trials for HPO
+        cv_folds: Cross-validation folds
+        time_budget_seconds: Max time for this model
+    
+    Returns:
+        Dict with model metrics and info
+    """
+    import socket
+    from services.optuna_automl import optuna_automl
+    
+    worker_hostname = socket.gethostname()
+    start_time = time.time()
+    
+    logger.info(f"[{job_id}] Worker {worker_hostname} training: {model_name}")
+    
+    try:
+        # Update task state
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "job_id": job_id,
+                "model": model_name,
+                "worker": worker_hostname,
+                "stage": "loading",
+            }
+        )
+        
+        # Load and preprocess data (each worker does this independently)
+        import polars as pl
+        import numpy as np
+        
+        if dataset_path.endswith('.parquet'):
+            df = pl.read_parquet(dataset_path).to_pandas()
+        else:
+            df = pl.read_csv(
+                dataset_path,
+                infer_schema_length=None,
+                ignore_errors=True
+            ).to_pandas()
+        
+        # Preprocess
+        X, y, feature_names, label_encoder, preprocessor = optuna_automl.preprocess_data(
+            df, target_column
+        )
+        
+        # Get model definition
+        model_defs = (
+            optuna_automl.CLASSIFICATION_MODELS if problem_type == "classification" 
+            else optuna_automl.REGRESSION_MODELS
+        )
+        
+        if model_name not in model_defs:
+            raise ValueError(f"Unknown model: {model_name}")
+        
+        model_def = model_defs[model_name]
+        
+        # Scoring
+        if problem_type == "classification":
+            scoring = "accuracy"
+            direction = "maximize"
+        else:
+            scoring = "neg_mean_squared_error"
+            direction = "maximize"
+        
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "job_id": job_id,
+                "model": model_name,
+                "worker": worker_hostname,
+                "stage": "training",
+            }
+        )
+        
+        # Train the model
+        result = optuna_automl._train_single_model(
+            model_name=model_name,
+            model_def=model_def,
+            X=X,
+            y=y,
+            feature_names=feature_names,
+            scoring=scoring,
+            direction=direction,
+            n_trials=n_trials,
+            cv_folds=cv_folds,
+            time_budget=time_budget_seconds,
+            cancel_event=None,
+        )
+        
+        elapsed = time.time() - start_time
+        logger.info(f"[{job_id}] Worker {worker_hostname} completed {model_name} in {elapsed:.1f}s")
+        
+        return {
+            "status": "completed",
+            "job_id": job_id,
+            "model_name": model_name,
+            "algorithm": result.algorithm,
+            "metrics": result.metrics,
+            "params": result.params,
+            "cv_scores": result.cv_scores,
+            "training_time": result.training_time,
+            "feature_importance": result.feature_importance,
+            "worker": worker_hostname,
+        }
+        
+    except Exception as e:
+        logger.error(f"[{job_id}] Worker {worker_hostname} failed on {model_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "status": "failed",
+            "job_id": job_id,
+            "model_name": model_name,
+            "error": str(e),
+            "worker": worker_hostname,
+        }
+
+
+@shared_task(
+    bind=True,
+    name="worker.tasks.training.aggregate_distributed_results",
+    track_started=True,
+)
+def aggregate_distributed_results(
+    self,
+    results: List[Dict[str, Any]],
+    job_id: str,
+    problem_type: str,
+) -> Dict[str, Any]:
+    """
+    Aggregate results from distributed model training.
+    Called after all train_one_model tasks complete.
+    
+    Args:
+        results: List of results from train_one_model tasks
+        job_id: Parent job ID
+        problem_type: "classification" or "regression"
+    
+    Returns:
+        Aggregated result like train_automl returns
+    """
+    import joblib
+    
+    logger.info(f"[{job_id}] Aggregating {len(results)} model results")
+    
+    # Filter successful results
+    successful = [r for r in results if r.get("status") == "completed"]
+    failed = [r for r in results if r.get("status") == "failed"]
+    
+    if not successful:
+        return {
+            "job_id": job_id,
+            "status": "failed",
+            "error": "All model training tasks failed",
+            "failed_models": [r.get("model_name") for r in failed],
+        }
+    
+    # Rank by primary metric
+    if problem_type == "classification":
+        successful.sort(key=lambda r: r.get("metrics", {}).get("accuracy", 0), reverse=True)
+    else:
+        successful.sort(key=lambda r: r.get("metrics", {}).get("r2", 0), reverse=True)
+    
+    # Prepare output
+    models = []
+    for rank, r in enumerate(successful, 1):
+        models.append({
+            "rank": rank,
+            "algorithm": r.get("algorithm", r.get("model_name")),
+            "metrics": r.get("metrics", {}),
+            "params": r.get("params", {}),
+            "cv_scores": r.get("cv_scores", []),
+            "training_time": r.get("training_time", 0),
+            "worker": r.get("worker", "unknown"),
+            "feature_importance": r.get("feature_importance"),
+        })
+    
+    best_model = models[0]["algorithm"] if models else None
+    total_time = sum(r.get("training_time", 0) for r in successful)
+    
+    logger.info(f"[{job_id}] Best model: {best_model}")
+    logger.info(f"[{job_id}] Successful: {len(successful)}, Failed: {len(failed)}")
+    
+    return {
+        "job_id": job_id,
+        "status": "completed",
+        "problem_type": problem_type,
+        "best_model": best_model,
+        "models": models,
+        "n_models_trained": len(successful),
+        "n_models_failed": len(failed),
+        "failed_models": [r.get("model_name") for r in failed],
+        "total_training_time": total_time,
+        "distributed": True,
+        "completed_at": datetime.utcnow().isoformat(),
+    }
+
+
+def dispatch_distributed_training(
+    job_id: str,
+    dataset_path: str,
+    target_column: str,
+    problem_type: str,
+    model_types: Optional[List[str]] = None,
+    n_trials_per_model: int = 10,
+    time_budget_minutes: int = 5,
+) -> str:
+    """
+    Dispatch distributed training across available workers.
+    
+    Uses Celery's chord: runs train_one_model in parallel, 
+    then aggregates with aggregate_distributed_results.
+    
+    Args:
+        job_id: Job identifier  
+        dataset_path: Path to dataset
+        target_column: Target column
+        problem_type: "classification" or "regression"
+        model_types: List of models to train, or None for all
+        n_trials_per_model: Optuna trials per model
+        time_budget_minutes: Total time budget
+    
+    Returns:
+        Chord task ID for tracking
+    """
+    from celery import chord
+    
+    # Determine which models to train
+    from services.optuna_automl import optuna_automl
+    
+    if problem_type == "classification":
+        all_models = list(optuna_automl.CLASSIFICATION_MODELS.keys())
+    else:
+        all_models = list(optuna_automl.REGRESSION_MODELS.keys())
+    
+    if model_types:
+        models_to_train = [m for m in model_types if m in all_models]
+    else:
+        models_to_train = all_models
+    
+    # Calculate time budget per model
+    time_per_model = (time_budget_minutes * 60) / len(models_to_train)
+    
+    logger.info(f"[{job_id}] Dispatching distributed training for {len(models_to_train)} models")
+    logger.info(f"[{job_id}] Models: {models_to_train}")
+    logger.info(f"[{job_id}] Time per model: {time_per_model:.0f}s")
+    
+    # Create tasks for each model
+    tasks = [
+        train_one_model.s(
+            job_id=job_id,
+            dataset_path=dataset_path,
+            target_column=target_column,
+            model_name=model_name,
+            problem_type=problem_type,
+            n_trials=n_trials_per_model,
+            cv_folds=5,
+            time_budget_seconds=time_per_model,
+        )
+        for model_name in models_to_train
+    ]
+    
+    # Create chord: run all tasks in parallel, then aggregate
+    callback = aggregate_distributed_results.s(
+        job_id=job_id,
+        problem_type=problem_type,
+    )
+    
+    result = chord(tasks)(callback)
+    
+    logger.info(f"[{job_id}] Chord dispatched with task ID: {result.id}")
+    
+    return result.id

@@ -226,36 +226,71 @@ async def get_resource_stats():
 async def get_cluster_health(
     session: AsyncSession = Depends(get_session)
 ):
-    """Get cluster health overview"""
+    """Get cluster health overview - includes Celery workers"""
     from routers.workers import get_local_machine_info, WORKER_TTL_SECONDS
     from models.worker import Worker
     from datetime import timedelta
     import psutil
+    from loguru import logger
     
     # Get master info
     master = get_local_machine_info()
     
-    # Get online workers from DB
+    # Track seen hostnames to avoid duplicates
+    seen_hostnames = {master.hostname.lower()}
+    workers_list = []
+    
+    # First, get Celery workers directly from broker (most reliable)
+    try:
+        from worker.celery_app import celery_app
+        inspector = celery_app.control.inspect(timeout=2.0)
+        active_queues = inspector.active_queues() or {}
+        
+        for worker_name, queues in active_queues.items():
+            hostname = worker_name.split('@')[-1] if '@' in worker_name else worker_name
+            
+            if hostname.lower() in seen_hostnames:
+                continue
+            seen_hostnames.add(hostname.lower())
+            
+            queue_names = [q.get('name', 'unknown') for q in queues]
+            
+            workers_list.append({
+                "id": worker_name,
+                "hostname": hostname,
+                "status": "online",
+                "cpu_percent": 0,  # Not available from Celery inspect
+                "ram_percent": 0,
+                "queues": queue_names,
+            })
+        
+        logger.debug(f"Found {len(workers_list)} Celery workers")
+    except Exception as e:
+        logger.warning(f"Failed to inspect Celery workers: {e}")
+    
+    # Also get DB-registered workers (in case any are registered but not running Celery)
     cutoff = datetime.utcnow() - timedelta(seconds=WORKER_TTL_SECONDS)
     result = await session.execute(
         select(Worker).where(Worker.last_heartbeat >= cutoff)
     )
     db_workers = result.scalars().all()
     
-    # Convert to worker-like objects
-    workers_list = []
     for w in db_workers:
+        if w.hostname.lower() in seen_hostnames:
+            continue
+        seen_hostnames.add(w.hostname.lower())
+        
         workers_list.append({
             "id": w.worker_id,
             "hostname": w.hostname,
             "status": w.status,
-            "cpu_percent": psutil.cpu_percent(interval=0),  # Approximate since we don't store it
+            "cpu_percent": 0,
             "ram_percent": round((1 - w.available_ram_gb / w.total_ram_gb) * 100, 1) if w.total_ram_gb > 0 else 0,
         })
     
     online = len([w for w in workers_list if w["status"] in ("online", "busy")]) + 1  # +1 for master
     offline = len([w for w in workers_list if w["status"] == "offline"])
-    busy = len([w for w in workers_list if w["status"] == "busy" or (w.get("current_tasks", 0) > 0)])
+    busy = len([w for w in workers_list if w["status"] == "busy"])
     
     return {
         "total_nodes": len(workers_list) + 1,  # +1 for master

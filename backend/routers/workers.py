@@ -303,6 +303,125 @@ async def get_master():
     return get_local_machine_info()
 
 
+@router.get("/celery-workers")
+async def get_celery_workers():
+    """
+    Get active Celery workers directly from the broker.
+    This shows workers connected to Redis even if not registered via CLI.
+    """
+    try:
+        from worker.celery_app import celery_app
+        
+        inspector = celery_app.control.inspect(timeout=2.0)
+        active_queues = inspector.active_queues() or {}
+        stats = inspector.stats() or {}
+        
+        workers = []
+        for worker_name, queues in active_queues.items():
+            worker_stats = stats.get(worker_name, {})
+            
+            # Parse hostname from worker name (format: celery@HOSTNAME)
+            hostname = worker_name.split('@')[-1] if '@' in worker_name else worker_name
+            
+            # Get queue names this worker listens to
+            queue_names = [q.get('name', 'unknown') for q in queues]
+            
+            workers.append({
+                "worker_id": worker_name,
+                "hostname": hostname,
+                "status": "online",
+                "queues": queue_names,
+                "pool": worker_stats.get("pool", {}).get("implementation", "unknown"),
+                "concurrency": worker_stats.get("pool", {}).get("max-concurrency", 1),
+                "pid": worker_stats.get("pid"),
+            })
+        
+        return {"workers": workers, "count": len(workers)}
+    except Exception as e:
+        logger.warning(f"Failed to inspect Celery workers: {e}")
+        return {"workers": [], "count": 0, "error": str(e)}
+
+
+@router.get("/all")
+async def get_all_workers(
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get all workers - both DB-registered and Celery-connected.
+    This is the comprehensive view for the frontend.
+    """
+    # Get master info
+    master = get_local_machine_info()
+    all_workers = [master.model_dump()]
+    seen_hostnames = {master.hostname.lower()}
+    
+    # Get Celery workers from broker
+    try:
+        from worker.celery_app import celery_app
+        
+        inspector = celery_app.control.inspect(timeout=2.0)
+        active_queues = inspector.active_queues() or {}
+        
+        for worker_name, queues in active_queues.items():
+            hostname = worker_name.split('@')[-1] if '@' in worker_name else worker_name
+            
+            if hostname.lower() in seen_hostnames:
+                continue
+            seen_hostnames.add(hostname.lower())
+            
+            queue_names = [q.get('name', 'unknown') for q in queues]
+            has_gpu = 'gpu' in queue_names
+            
+            all_workers.append({
+                "id": worker_name,
+                "hostname": hostname,
+                "role": "celery-worker",
+                "status": "online",
+                "ip": "",  # Not available from Celery inspect
+                "cpu_count": 0,
+                "cpu_percent": 0,
+                "ram_total_gb": 0,
+                "ram_used_gb": 0,
+                "ram_percent": 0,
+                "gpu_name": "GPU available" if has_gpu else None,
+                "vram_total_gb": None,
+                "vram_used_gb": None,
+                "vram_percent": None,
+                "uptime": "connected",
+                "queues": queue_names,
+            })
+    except Exception as e:
+        logger.warning(f"Failed to inspect Celery workers: {e}")
+    
+    # Also get DB-registered workers
+    cutoff = datetime.utcnow() - timedelta(seconds=WORKER_TTL_SECONDS)
+    result = await session.execute(select(Worker).where(Worker.last_heartbeat >= cutoff))
+    db_workers = result.scalars().all()
+    
+    for w in db_workers:
+        if w.hostname.lower() in seen_hostnames:
+            continue
+        seen_hostnames.add(w.hostname.lower())
+        
+        all_workers.append({
+            "id": w.worker_id,
+            "hostname": w.hostname,
+            "role": "worker",
+            "status": w.status,
+            "ip": w.ip_address,
+            "cpu_count": w.cpu_count,
+            "cpu_percent": 0,
+            "ram_total_gb": w.total_ram_gb,
+            "ram_used_gb": w.total_ram_gb - w.available_ram_gb,
+            "ram_percent": round(((w.total_ram_gb - w.available_ram_gb) / w.total_ram_gb) * 100) if w.total_ram_gb else 0,
+            "gpu_name": json.loads(w.gpu_names)[0] if w.gpu_names else None,
+            "vram_total_gb": w.total_vram_gb or None,
+            "uptime": "connected",
+        })
+    
+    return all_workers
+
+
 @router.get("/available")
 async def get_available_workers(
     session: AsyncSession = Depends(get_session)

@@ -43,6 +43,17 @@ def _celery_available() -> bool:
         return False
 
 
+def _get_worker_count() -> int:
+    """Get the number of active Celery workers."""
+    try:
+        from worker.celery_app import celery_app
+        inspect = celery_app.control.inspect(timeout=1.0)
+        active_queues = inspect.active_queues()
+        return len(active_queues) if active_queues else 0
+    except Exception:
+        return 0
+
+
 @router.post("/start", response_model=JobRead)
 async def start_training(
     job_data: JobCreate,
@@ -111,9 +122,52 @@ async def start_training(
     
     # --- Dispatch: prefer Celery workers, fall back to local ---
     use_celery = _celery_available()
+    worker_count = _get_worker_count() if use_celery else 0
     
-    if use_celery:
-        # Dispatch to a remote Celery worker
+    if use_celery and worker_count >= 2:
+        # Multiple workers available - use distributed training (split compute)
+        from worker.tasks.training import dispatch_distributed_training
+        
+        model_types_list = None
+        if job_data.model_types:
+            model_types_list = job_data.model_types if isinstance(job_data.model_types, list) else None
+        
+        # Detect problem type early for distributed dispatch
+        problem_type = job_data.problem_type or "auto"
+        if problem_type == "auto":
+            # Quick detection based on target column
+            import polars as pl
+            try:
+                df = pl.read_csv(dataset.file_path, n_rows=1000)
+                target_col = df[job_data.target_column]
+                n_unique = target_col.n_unique()
+                # Heuristic: if <= 20 unique values, likely classification
+                problem_type = "classification" if n_unique <= 20 else "regression"
+            except:
+                problem_type = "classification"  # default
+        
+        chord_task_id = dispatch_distributed_training(
+            job_id=job.id,
+            dataset_path=dataset.file_path,
+            target_column=job_data.target_column,
+            problem_type=problem_type,
+            model_types=model_types_list,
+            n_trials_per_model=10,
+            time_budget_minutes=job_data.time_budget,
+        )
+        _celery_tasks[job.id] = chord_task_id
+        
+        # Start a background poller that watches Celery state and updates DB + WS
+        background_tasks.add_task(
+            _poll_celery_job,
+            job.id,
+            chord_task_id,
+        )
+        
+        logger.info(f"Dispatched DISTRIBUTED training job {job.id} across {worker_count} workers (chord={chord_task_id})")
+    
+    elif use_celery:
+        # Single worker - dispatch to Celery but not distributed
         from worker.tasks.training import train_automl
         
         model_types_list = None

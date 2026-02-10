@@ -346,6 +346,11 @@ export const workersApi = {
     return handleResponse<Worker[]>(response)
   },
 
+  getAll: async (): Promise<Worker[]> => {
+    const response = await fetch(`${API_BASE}/workers/all`)
+    return handleResponse<Worker[]>(response)
+  },
+
   getMaster: async (): Promise<Worker> => {
     const response = await fetch(`${API_BASE}/workers/master`)
     return handleResponse<Worker>(response)
