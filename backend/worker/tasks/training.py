@@ -90,6 +90,11 @@ def train_automl(
     Returns:
         Dict with trained models info, metrics, and paths
     """
+    import sys
+    from pathlib import Path
+    backend_dir = Path(__file__).resolve().parent.parent.parent
+    if str(backend_dir) not in sys.path:
+        sys.path.insert(0, str(backend_dir))
     from services.optuna_automl import optuna_automl
     
     start_time = time.time()
@@ -451,6 +456,14 @@ def train_one_model(
         Dict with model metrics and info
     """
     import socket
+    import sys
+    from pathlib import Path
+    
+    # Ensure backend dir is in path for imports
+    backend_dir = Path(__file__).resolve().parent.parent.parent
+    if str(backend_dir) not in sys.path:
+        sys.path.insert(0, str(backend_dir))
+    
     from services.optuna_automl import optuna_automl
     
     worker_hostname = socket.gethostname()
@@ -668,9 +681,13 @@ def dispatch_distributed_training(
     Returns:
         Chord task ID for tracking
     """
-    from celery import chord
+    import sys
+    from pathlib import Path
+    backend_dir = Path(__file__).resolve().parent.parent.parent
+    if str(backend_dir) not in sys.path:
+        sys.path.insert(0, str(backend_dir))
     
-    # Determine which models to train
+    from celery import chord
     from services.optuna_automl import optuna_automl
     
     if problem_type == "classification":
