@@ -147,7 +147,23 @@ export interface JobCreate {
   name?: string
 }
 
+export interface TrainingModelOption {
+  id: string
+  name: string
+  category: string
+}
+
+export interface TrainingModelsResponse {
+  problem_type: 'classification' | 'regression'
+  models: TrainingModelOption[]
+}
+
 export const trainingApi = {
+  getModels: async (problemType: 'classification' | 'regression'): Promise<TrainingModelsResponse> => {
+    const response = await fetch(`${API_BASE}/training/models?problem_type=${problemType}`)
+    return handleResponse<TrainingModelsResponse>(response)
+  },
+
   start: async (config: JobCreate): Promise<Job> => {
     const response = await fetch(`${API_BASE}/training/start`, {
       method: 'POST',

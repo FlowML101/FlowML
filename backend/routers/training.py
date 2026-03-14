@@ -27,6 +27,60 @@ _running_jobs: Dict[str, threading.Event] = {}
 # Track Celery async-result IDs for distributed jobs
 _celery_tasks: Dict[str, str] = {}
 
+_MODEL_DISPLAY_META = {
+    "xgboost": {"name": "XGBoost", "category": "boosting"},
+    "lightgbm": {"name": "LightGBM", "category": "boosting"},
+    "gradient_boosting": {"name": "Gradient Boosting", "category": "boosting"},
+    "catboost": {"name": "CatBoost", "category": "boosting"},
+    "adaboost": {"name": "AdaBoost", "category": "boosting"},
+    "random_forest": {"name": "Random Forest", "category": "tree"},
+    "extra_trees": {"name": "Extra Trees", "category": "tree"},
+    "decision_tree": {"name": "Decision Tree", "category": "tree"},
+    "logistic_regression": {"name": "Logistic Regression", "category": "linear"},
+    "ridge": {"name": "Ridge", "category": "linear"},
+    "lasso": {"name": "Lasso", "category": "linear"},
+    "elastic_net": {"name": "Elastic Net", "category": "linear"},
+    "knn": {"name": "KNN", "category": "instance"},
+    "svm": {"name": "SVM", "category": "instance"},
+    "svr": {"name": "SVR", "category": "instance"},
+    "naive_bayes": {"name": "Naive Bayes", "category": "probabilistic"},
+}
+
+
+def _supported_models(problem_type: str) -> set[str]:
+    if problem_type == "classification":
+        return set(optuna_automl.CLASSIFICATION_MODELS.keys())
+    if problem_type == "regression":
+        return set(optuna_automl.REGRESSION_MODELS.keys())
+    return set()
+
+
+@router.get("/models")
+async def get_training_models(problem_type: str = "classification"):
+    """Return available model options for a specific problem type."""
+    if problem_type not in {"classification", "regression"}:
+        raise bad_request("problem_type must be 'classification' or 'regression'")
+
+    supported = sorted(_supported_models(problem_type))
+    models = []
+    for model_id in supported:
+        meta = _MODEL_DISPLAY_META.get(
+            model_id,
+            {"name": model_id.replace("_", " ").title(), "category": "other"},
+        )
+        models.append(
+            {
+                "id": model_id,
+                "name": meta["name"],
+                "category": meta["category"],
+            }
+        )
+
+    return {
+        "problem_type": problem_type,
+        "models": models,
+    }
+
 
 def _celery_available() -> bool:
     """Check if Celery broker (Redis) is reachable and at least one worker is online."""
@@ -92,6 +146,28 @@ async def start_training(
         raise bad_request(
             f"Time budget exceeds maximum of {settings.MAX_TIME_BUDGET} minutes"
         )
+
+    # Validate problem type and model selection
+    requested_problem_type = (job_data.problem_type or "auto").lower()
+    if requested_problem_type not in {"classification", "regression", "auto"}:
+        raise bad_request("problem_type must be one of: classification, regression, auto")
+
+    if isinstance(job_data.model_types, list):
+        if len(job_data.model_types) == 0:
+            raise bad_request("Please select at least one model")
+
+        if requested_problem_type in {"classification", "regression"}:
+            supported = _supported_models(requested_problem_type)
+            invalid_models = sorted([m for m in job_data.model_types if m not in supported])
+            if invalid_models:
+                raise bad_request(
+                    "Selected model types are not valid for the chosen problem type",
+                    {
+                        "problem_type": requested_problem_type,
+                        "invalid_models": invalid_models,
+                        "available_models": sorted(supported),
+                    },
+                )
     
     # Create job
     job_name = job_data.name or f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -106,7 +182,7 @@ async def start_training(
         target_column=job_data.target_column,
         time_budget=job_data.time_budget,
         model_types=model_types,
-        problem_type=job_data.problem_type,
+        problem_type=requested_problem_type,
         status=JobStatus.PENDING
     )
     

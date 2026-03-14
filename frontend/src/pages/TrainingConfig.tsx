@@ -9,38 +9,37 @@ import { Zap, Network, Play, Settings2, Loader2, AlertCircle } from 'lucide-reac
 import { Badge } from '@/components/ui/badge'
 import { useDataset } from '@/contexts/DatasetContext'
 import { trainingApi, workersApi } from '@/lib/api'
+import type { TrainingModelOption } from '@/lib/api'
 import { toast } from 'sonner'
+
+type ProblemType = 'classification' | 'regression'
+
+const DEFAULT_MODEL_SELECTION: Record<ProblemType, string[]> = {
+  classification: ['xgboost', 'random_forest', 'lightgbm', 'gradient_boosting', 'logistic_regression', 'knn', 'extra_trees'],
+  regression: ['xgboost', 'random_forest', 'lightgbm', 'gradient_boosting', 'ridge', 'lasso', 'elastic_net', 'knn'],
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  boosting: 'Boosting',
+  tree: 'Tree-based',
+  linear: 'Linear',
+  instance: 'Instance-based',
+  probabilistic: 'Probabilistic',
+  other: 'Other',
+}
 
 export function TrainingConfig() {
   const navigate = useNavigate()
   const { selectedDataset, previewData, datasets, isLoadingDatasets } = useDataset()
   
   const [targetColumn, setTargetColumn] = useState('')
+  const [problemType, setProblemType] = useState<ProblemType>('classification')
   const [timeBudget, setTimeBudget] = useState([15])
-  const [selectedModels, setSelectedModels] = useState<string[]>(['xgboost', 'random_forest', 'lightgbm', 'gradient_boosting', 'logistic_regression', 'knn', 'extra_trees'])
+  const [selectedModels, setSelectedModels] = useState<string[]>(DEFAULT_MODEL_SELECTION.classification)
+  const [modelTypes, setModelTypes] = useState<TrainingModelOption[]>([])
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
   const [workerCount, setWorkerCount] = useState(0)
-
-  // Available model types - matches backend optuna_automl.py
-  const modelTypes = [
-    // Gradient Boosting (fast & accurate)
-    { id: 'xgboost', name: 'XGBoost', category: 'boosting' },
-    { id: 'lightgbm', name: 'LightGBM', category: 'boosting' },
-    { id: 'gradient_boosting', name: 'Gradient Boosting', category: 'boosting' },
-    { id: 'catboost', name: 'CatBoost', category: 'boosting' },
-    { id: 'adaboost', name: 'AdaBoost', category: 'boosting' },
-    // Tree-based (interpretable)
-    { id: 'random_forest', name: 'Random Forest', category: 'tree' },
-    { id: 'extra_trees', name: 'Extra Trees', category: 'tree' },
-    { id: 'decision_tree', name: 'Decision Tree', category: 'tree' },
-    // Linear (fast baseline)
-    { id: 'logistic_regression', name: 'Logistic Regression', category: 'linear' },
-    // Instance-based
-    { id: 'knn', name: 'KNN', category: 'instance' },
-    { id: 'svm', name: 'SVM', category: 'instance' },
-    // Probabilistic
-    { id: 'naive_bayes', name: 'Naive Bayes', category: 'probabilistic' },
-  ]
 
   // Estimate models that can be trained in the time budget
   const estimatedModels = Math.min(selectedModels.length, Math.max(1, Math.floor(timeBudget[0] / 3)))
@@ -68,6 +67,40 @@ export function TrainingConfig() {
       setWorkerCount(workers.filter(w => w.status === 'online').length)
     }).catch(() => setWorkerCount(0))
   }, [])
+
+  // Fetch available models for selected problem type
+  useEffect(() => {
+    const loadModels = async () => {
+      setIsLoadingModels(true)
+      try {
+        const response = await trainingApi.getModels(problemType)
+        setModelTypes(response.models)
+
+        const availableIds = new Set(response.models.map(m => m.id))
+        const defaults = (DEFAULT_MODEL_SELECTION[problemType] || []).filter(id => availableIds.has(id))
+        setSelectedModels(defaults.length > 0 ? defaults : response.models.slice(0, 5).map(m => m.id))
+      } catch (err) {
+        console.error('Failed to fetch model list:', err)
+        toast.error('Failed to load model list for selected problem type')
+        setModelTypes([])
+        setSelectedModels([])
+      } finally {
+        setIsLoadingModels(false)
+      }
+    }
+
+    loadModels()
+  }, [problemType])
+
+  const groupedModelTypes = modelTypes.reduce<Record<string, TrainingModelOption[]>>((acc, model) => {
+    if (!acc[model.category]) {
+      acc[model.category] = []
+    }
+    acc[model.category].push(model)
+    return acc
+  }, {})
+
+  const categoryOrder = ['boosting', 'tree', 'linear', 'instance', 'probabilistic', 'other']
 
   const toggleModel = (modelId: string) => {
     setSelectedModels(prev => 
@@ -98,6 +131,7 @@ export function TrainingConfig() {
         target_column: targetColumn,
         time_budget: timeBudget[0],
         model_types: selectedModels,
+        problem_type: problemType,
         name: `Training on ${selectedDataset.name}`,
       })
       toast.success('Training job started!')
@@ -179,7 +213,7 @@ export function TrainingConfig() {
               <div className="flex gap-2">
                 <Badge variant="outline">{(selectedDataset?.num_rows ?? 0).toLocaleString()} rows</Badge>
                 <Badge variant="outline">{selectedDataset?.num_columns ?? 0} columns</Badge>
-                <Badge variant="outline">Classification</Badge>
+                <Badge variant="outline" className="capitalize">{problemType}</Badge>
               </div>
             </CardContent>
           </Card>
@@ -209,6 +243,23 @@ export function TrainingConfig() {
                 </Select>
                 <p className="text-xs text-muted-foreground">
                   Column to predict (dependent variable)
+                </p>
+              </div>
+
+              {/* Problem Type */}
+              <div className="space-y-2">
+                <Label htmlFor="problem-type">Problem Type</Label>
+                <Select value={problemType} onValueChange={(value: ProblemType) => setProblemType(value)}>
+                  <SelectTrigger id="problem-type">
+                    <SelectValue placeholder="Select problem type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="classification">Classification</SelectItem>
+                    <SelectItem value="regression">Regression</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Choose the ML task to show compatible models only.
                 </p>
               </div>
 
@@ -248,6 +299,7 @@ export function TrainingConfig() {
                       size="sm"
                       className="text-xs h-7"
                       onClick={() => setSelectedModels(modelTypes.map(m => m.id))}
+                      disabled={isLoadingModels || modelTypes.length === 0}
                     >
                       Select All
                     </Button>
@@ -256,33 +308,51 @@ export function TrainingConfig() {
                       size="sm"
                       className="text-xs h-7"
                       onClick={() => setSelectedModels([])}
+                      disabled={isLoadingModels || modelTypes.length === 0}
                     >
                       Clear
                     </Button>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {modelTypes.map((model) => (
-                      <div
-                        key={model.id}
-                        onClick={() => toggleModel(model.id)}
-                        className={`flex items-center space-x-2 p-2.5 rounded-lg cursor-pointer transition-all border ${
-                          selectedModels.includes(model.id)
-                            ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
-                            : 'bg-zinc-800/30 border-zinc-700 hover:border-zinc-600'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedModels.includes(model.id)}
-                          onChange={() => {}}
-                          className="w-3.5 h-3.5 rounded border-zinc-600 text-purple-600 focus:ring-purple-500"
-                        />
-                        <span className="text-xs font-medium">{model.name}</span>
-                      </div>
-                    )
-                  )}
-                </div>
+                {isLoadingModels ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading models for {problemType}...
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {categoryOrder
+                      .filter(category => groupedModelTypes[category]?.length)
+                      .map(category => (
+                        <div key={category} className="space-y-2">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                            {CATEGORY_LABELS[category] || category}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                            {groupedModelTypes[category].map((model) => (
+                              <div
+                                key={model.id}
+                                onClick={() => toggleModel(model.id)}
+                                className={`flex items-center space-x-2 p-2.5 rounded-lg cursor-pointer transition-all border ${
+                                  selectedModels.includes(model.id)
+                                    ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                                    : 'bg-zinc-800/30 border-zinc-700 hover:border-zinc-600'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedModels.includes(model.id)}
+                                  onChange={() => {}}
+                                  className="w-3.5 h-3.5 rounded border-zinc-600 text-purple-600 focus:ring-purple-500"
+                                />
+                                <span className="text-xs font-medium">{model.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground">
                   {selectedModels.length} of {modelTypes.length} models selected
                 </p>
@@ -332,7 +402,7 @@ export function TrainingConfig() {
             <CardContent className="relative">
               <Button
                 onClick={handleStartTraining}
-                disabled={isStarting || !selectedDataset || !targetColumn || selectedModels.length === 0}
+                disabled={isStarting || isLoadingModels || !selectedDataset || !targetColumn || selectedModels.length === 0}
                 className="w-full bg-gradient-to-r from-purple-600 to-purple-600 hover:from-purple-700 hover:to-purple-700 text-lg py-6 disabled:opacity-50"
               >
                 {isStarting ? (
