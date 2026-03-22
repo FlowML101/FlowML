@@ -272,15 +272,15 @@ if hasattr(model, 'predict_proba'):
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="p-2 rounded bg-zinc-800/50">
-                      <p className="text-muted-foreground text-xs">Accuracy</p>
+                      <p className="text-muted-foreground text-xs">{(selectedModel.r2 !== undefined && selectedModel.r2 !== null) ? 'R² Score' : 'Accuracy'}</p>
                       <p className="font-medium text-green-400">
-                        {((selectedModel.accuracy || 0) * 100).toFixed(1)}%
+                        {(selectedModel.r2 !== undefined && selectedModel.r2 !== null) ? selectedModel.r2.toFixed(3) : `${((selectedModel.accuracy || 0) * 100).toFixed(1)}%`}
                       </p>
                     </div>
                     <div className="p-2 rounded bg-zinc-800/50">
-                      <p className="text-muted-foreground text-xs">F1 Score</p>
+                      <p className="text-muted-foreground text-xs">{(selectedModel.r2 !== undefined && selectedModel.r2 !== null) ? 'RMSE' : 'F1 Score'}</p>
                       <p className="font-medium text-blue-400">
-                        {((selectedModel.f1_score || 0) * 100).toFixed(1)}%
+                        {(selectedModel.r2 !== undefined && selectedModel.r2 !== null) ? (selectedModel.rmse || 0).toFixed(3) : `${((selectedModel.f1_score || 0) * 100).toFixed(1)}%`}
                       </p>
                     </div>
                     <div className="p-2 rounded bg-zinc-800/50">

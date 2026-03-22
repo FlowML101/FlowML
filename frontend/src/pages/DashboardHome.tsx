@@ -103,7 +103,7 @@ export function DashboardHome() {
 
         <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-purple-500/10 before:to-transparent before:opacity-50 transition-all duration-300 hover:shadow-md hover:shadow-purple-500/15">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative">
-            <CardTitle className="text-sm font-medium">Avg. Accuracy</CardTitle>
+            <CardTitle className="text-sm font-medium">Top Performance</CardTitle>
             <TrendingUp className="w-4 h-4 text-purple-500" />
           </CardHeader>
           <CardContent className="relative">
@@ -114,7 +114,7 @@ export function DashboardHome() {
                 <div className="text-2xl font-bold">
                   {stats?.avg_accuracy ? `${(stats.avg_accuracy * 100).toFixed(1)}%` : 'N/A'}
                 </div>
-                <p className="text-xs text-muted-foreground">Best model accuracy</p>
+                <p className="text-xs text-muted-foreground">Best model accuracy/R²</p>
               </>
             )}
           </CardContent>

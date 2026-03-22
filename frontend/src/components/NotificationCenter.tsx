@@ -42,9 +42,12 @@ export function NotificationCenter() {
     switch (lastMessage.type) {
       case 'job_update':
         if (lastMessage.payload.status === 'completed') {
+          const hasR2 = lastMessage.payload.r2 !== undefined && lastMessage.payload.r2 !== null;
           addNotification({
             title: 'Training Complete',
-            message: `${lastMessage.payload.jobName || 'Job'} finished with ${lastMessage.payload.accuracy || 'N/A'}% accuracy`,
+            message: `${lastMessage.payload.jobName || 'Job'} finished with ${
+              hasR2 ? `R² Score: ${lastMessage.payload.r2}` : `${lastMessage.payload.accuracy || 'N/A'}% accuracy`
+            }`,
             type: 'success',
           })
         } else if (lastMessage.payload.status === 'failed') {

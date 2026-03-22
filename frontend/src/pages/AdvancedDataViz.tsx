@@ -313,11 +313,14 @@ export function AdvancedDataViz() {
                 {filteredModels.length === 0 ? (
                   <SelectItem value="" disabled>No models for this job</SelectItem>
                 ) : (
-                  filteredModels.map(model => (
-                    <SelectItem key={model.id} value={model.id}>
-                      {model.name} ({((model.accuracy || 0) * 100).toFixed(1)}%)
-                    </SelectItem>
-                  ))
+                  filteredModels.map(model => {
+                    const isRegression = model.r2 !== undefined && model.r2 !== null;
+                    return (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.name} ({isRegression ? `R²: ${model.r2 ? model.r2.toFixed(3) : 'N/A'}` : `${((model.accuracy || 0) * 100).toFixed(1)}%`})
+                      </SelectItem>
+                    )
+                  })
                 )}
               </SelectContent>
             </Select>

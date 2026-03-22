@@ -420,7 +420,7 @@ export function InferencePage() {
           </Badge>
           {currentModel && (
             <Badge className="bg-purple-600 text-sm px-4 py-2">
-              {currentModel.name} • {currentModel.accuracy ? `${(currentModel.accuracy * 100).toFixed(1)}%` : 'N/A'}
+              {currentModel.name} • {(currentModel.r2 !== undefined && currentModel.r2 !== null) ? `R² ${currentModel.r2.toFixed(3)}` : (currentModel.accuracy ? `${(currentModel.accuracy * 100).toFixed(1)}% acc` : 'N/A')}
             </Badge>
           )}
         </div>
@@ -477,7 +477,7 @@ export function InferencePage() {
                         <div className="flex items-center gap-2">
                           <span>{model.name}</span>
                           <Badge variant="secondary" className="text-xs">
-                            {model.accuracy ? `${(model.accuracy * 100).toFixed(1)}% acc` : 'N/A'}
+                            {(model.r2 !== undefined && model.r2 !== null) ? `R² ${model.r2.toFixed(3)}` : (model.accuracy ? `${(model.accuracy * 100).toFixed(1)}% acc` : 'N/A')}
                           </Badge>
                         </div>
                       </SelectItem>
@@ -489,7 +489,7 @@ export function InferencePage() {
                   <div className="flex items-center justify-between p-3 rounded-lg bg-purple-600/10 border border-purple-600/30">
                     <div>
                       <div className="text-sm font-medium">{currentModel.name}</div>
-                      <div className="text-xs text-muted-foreground">Accuracy: {currentModel.accuracy ? `${(currentModel.accuracy * 100).toFixed(1)}%` : 'N/A'}</div>
+                      <div className="text-xs text-muted-foreground">Score: {(currentModel.r2 !== undefined && currentModel.r2 !== null) ? `R² ${currentModel.r2.toFixed(3)}` : (currentModel.accuracy ? `${(currentModel.accuracy * 100).toFixed(1)}% acc` : 'N/A')}</div>
                     </div>
                     <Badge variant="success">Ready</Badge>
                   </div>
