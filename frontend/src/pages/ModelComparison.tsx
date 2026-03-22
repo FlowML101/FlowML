@@ -19,9 +19,13 @@ interface DisplayModel {
   precision: number
   recall: number
   f1: number
+  r2: number
+  rmse: number
+  mae: number
   trainTime: string
   status: 'production' | 'staging' | 'experimental'
   job_id: string
+  isRegression: boolean
 }
 
 interface ConfusionMatrixData {
@@ -53,18 +57,29 @@ export function ModelComparison() {
 
   // Convert to display models when filtered models change
   useEffect(() => {
-    const display: DisplayModel[] = filteredModels.map((m, idx) => ({
-      id: m.id,
-      name: m.name || 'Unknown',
-      version: `v${idx + 1}.0`,
-      accuracy: (m.accuracy || 0) * 100,
-      precision: (m.precision || m.accuracy || 0) * 100,
-      recall: (m.recall || m.accuracy || 0) * 100,
-      f1: (m.f1_score || m.accuracy || 0) * 100,
-      trainTime: m.training_time ? `${(m.training_time / 60).toFixed(1)}m` : 'N/A',
-      status: idx === 0 ? 'production' : idx === 1 ? 'staging' : 'experimental',
-      job_id: m.job_id
-    }))
+    const display: DisplayModel[] = filteredModels.map((m, idx) => {
+      const isRegression = m.r2 !== undefined && m.r2 !== null;
+      return {
+        id: m.id,
+        name: m.name || 'Unknown',
+        version: `v${idx + 1}.0`,
+        accuracy: isRegression ? (m.r2 ? Math.max(0, m.r2 * 100) : 0) : ((m.accuracy || 0) * 100),
+        precision: isRegression ? (m.rmse ? Math.max(0, 100 - (m.rmse * 10)) : 0) : ((m.precision || m.accuracy || 0) * 100),
+        recall: isRegression ? (m.mae ? Math.max(0, 100 - (m.mae * 10)) : 0) : ((m.recall || m.accuracy || 0) * 100),
+        f1: isRegression ? (m.r2 ? Math.max(0, m.r2 * 100) : 0) : ((m.f1_score || m.accuracy || 0) * 100),
+        r2: m.r2 || 0,
+        rmse: m.rmse || 0,
+        mae: m.mae || 0,
+        isRegression,
+        trainTime: m.training_time ? `${(m.training_time / 60).toFixed(1)}m` : 'N/A',
+        status: idx === 0 ? 'production' : idx === 1 ? 'staging' : 'experimental',
+        job_id: m.job_id
+      };
+    })
+    
+    // Sort models by accuracy (representing R2 for regression) so best are always first
+    display.sort((a, b) => b.accuracy - a.accuracy)
+    
     setDisplayModels(display)
     
     // Auto-select top 2 models
@@ -302,12 +317,12 @@ export function ModelComparison() {
                     </div>
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Accuracy</span>
-                        <span className="font-semibold text-green-400">{model.accuracy.toFixed(1)}%</span>
+                        <span className="text-muted-foreground">{model.isRegression ? 'R² Score' : 'Accuracy'}</span>
+                        <span className="font-semibold text-green-400">{model.isRegression ? model.r2.toFixed(3) : `${model.accuracy.toFixed(1)}%`}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">F1 Score</span>
-                        <span className="font-semibold">{model.f1.toFixed(1)}%</span>
+                        <span className="text-muted-foreground">{model.isRegression ? 'RMSE' : 'F1 Score'}</span>
+                        <span className="font-semibold">{model.isRegression ? model.rmse.toFixed(3) : `${model.f1.toFixed(1)}%`}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Train Time</span>
@@ -348,20 +363,36 @@ export function ModelComparison() {
                         </tr>
                       </thead>
                       <tbody>
-                        {['accuracy', 'precision', 'recall', 'f1'].map(metric => (
-                          <tr key={metric} className="border-b border-zinc-800">
-                            <td className="py-3 text-sm capitalize">{metric}</td>
+                        {(bestModel?.isRegression ? [
+                          { key: 'r2', label: 'R² Score' },
+                          { key: 'rmse', label: 'RMSE' },
+                          { key: 'mae', label: 'MAE' }
+                        ] : [
+                          { key: 'accuracy', label: 'Accuracy' },
+                          { key: 'precision', label: 'Precision' },
+                          { key: 'recall', label: 'Recall' },
+                          { key: 'f1', label: 'F1 Score' }
+                        ]).map(metric => (
+                          <tr key={metric.key} className="border-b border-zinc-800">
+                            <td className="py-3 text-sm">{metric.label}</td>
                             {selectedModels.map(id => {
                               const model = displayModels.find(m => m.id === id)
-                              const value = model?.[metric as keyof DisplayModel] as number || 0
+                              const value = model?.[metric.key as keyof DisplayModel] as number || 0
+                              
                               const isMax = selectedModels.every(otherId => {
                                 const other = displayModels.find(m => m.id === otherId)
-                                return value >= (other?.[metric as keyof DisplayModel] as number || 0)
+                                const otherVal = (other?.[metric.key as keyof DisplayModel] as number) || 0
+                                // For RMSE and MAE, lower is better
+                                if (metric.key === 'rmse' || metric.key === 'mae') {
+                                    return value <= otherVal || otherVal === 0
+                                }
+                                return value >= otherVal
                               })
+                              
                               return (
                                 <td key={id} className="text-center py-3">
                                   <span className={`font-semibold ${isMax ? 'text-green-400' : ''}`}>
-                                    {value.toFixed(1)}%
+                                    {model?.isRegression ? value.toFixed(3) : `${value.toFixed(1)}%`}
                                   </span>
                                 </td>
                               )
@@ -407,7 +438,7 @@ export function ModelComparison() {
                       ))}
                       
                       {/* Labels */}
-                      {['Accuracy', 'Precision', 'Recall', 'F1', 'Speed'].map((label, i) => {
+                      {(bestModel?.isRegression ? ['R² Score', 'Inv. RMSE', 'Inv. MAE', 'Explained Var', 'Speed'] : ['Accuracy', 'Precision', 'Recall', 'F1', 'Speed']).map((label, i) => {
                         const angles = [0, 72, 144, 216, 288]
                         const angle = (angles[i] - 90) * (Math.PI / 180)
                         const x = 150 + 130 * Math.cos(angle)
@@ -454,48 +485,50 @@ export function ModelComparison() {
                 </Card>
               </div>
 
-              {/* Confusion Matrices */}
-              <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-orange-400" />
-                    Confusion Matrices
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {selectedModels.map(modelId => {
-                      const model = displayModels.find(m => m.id === modelId)
-                      const matrix = getConfusionMatrix(modelId)
-                      return (
-                        <div key={modelId} className="space-y-3">
-                          <h4 className="font-medium text-center" style={{ color: modelColors[modelId] }}>
-                            {model?.name}
-                          </h4>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="p-4 rounded-lg bg-green-600/20 border border-green-600 text-center">
-                              <p className="text-xs text-muted-foreground mb-1">True Positive</p>
-                              <p className="text-2xl font-bold text-green-400">{matrix[0][0]}</p>
-                            </div>
-                            <div className="p-4 rounded-lg bg-red-600/20 border border-red-600 text-center">
-                              <p className="text-xs text-muted-foreground mb-1">False Positive</p>
-                              <p className="text-2xl font-bold text-red-400">{matrix[0][1]}</p>
-                            </div>
-                            <div className="p-4 rounded-lg bg-red-600/20 border border-red-600 text-center">
-                              <p className="text-xs text-muted-foreground mb-1">False Negative</p>
-                              <p className="text-2xl font-bold text-red-400">{matrix[1][0]}</p>
-                            </div>
-                            <div className="p-4 rounded-lg bg-green-600/20 border border-green-600 text-center">
-                              <p className="text-xs text-muted-foreground mb-1">True Negative</p>
-                              <p className="text-2xl font-bold text-green-400">{matrix[1][1]}</p>
+              {/* Confusion Matrices (Only for Classification) */}
+              {!bestModel?.isRegression && (
+                <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-orange-400" />
+                      Confusion Matrices
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {selectedModels.map(modelId => {
+                        const model = displayModels.find(m => m.id === modelId)
+                        const matrix = getConfusionMatrix(modelId)
+                        return (
+                          <div key={modelId} className="space-y-3">
+                            <h4 className="font-medium text-center" style={{ color: modelColors[modelId] }}>
+                              {model?.name}
+                            </h4>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="p-4 rounded-lg bg-green-600/20 border border-green-600 text-center">
+                                <p className="text-xs text-muted-foreground mb-1">True Positive</p>
+                                <p className="text-2xl font-bold text-green-400">{matrix[0][0]}</p>
+                              </div>
+                              <div className="p-4 rounded-lg bg-red-600/20 border border-red-600 text-center">
+                                <p className="text-xs text-muted-foreground mb-1">False Positive</p>
+                                <p className="text-2xl font-bold text-red-400">{matrix[0][1]}</p>
+                              </div>
+                              <div className="p-4 rounded-lg bg-red-600/20 border border-red-600 text-center">
+                                <p className="text-xs text-muted-foreground mb-1">False Negative</p>
+                                <p className="text-2xl font-bold text-red-400">{matrix[1][0]}</p>
+                              </div>
+                              <div className="p-4 rounded-lg bg-green-600/20 border border-green-600 text-center">
+                                <p className="text-xs text-muted-foreground mb-1">True Negative</p>
+                                <p className="text-2xl font-bold text-green-400">{matrix[1][1]}</p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Feature Importance */}
               <Card className="border-border bg-gradient-to-br from-zinc-900 to-zinc-900/50">
@@ -563,13 +596,15 @@ export function ModelComparison() {
                             <Badge className="bg-yellow-600">Best Overall</Badge>
                           </h3>
                           <p className="text-sm text-muted-foreground mt-1">
-                            Highest accuracy with balanced precision-recall trade-off
+                            {bestModel.isRegression 
+                              ? "Highest R² Score with lowest error (RMSE/MAE)" 
+                              : "Highest accuracy with balanced precision-recall trade-off"}
                           </p>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="text-4xl font-bold text-yellow-400">{bestModel.name}</div>
-                        <p className="text-sm text-muted-foreground">{bestModel.accuracy.toFixed(1)}% accuracy • {bestModel.trainTime}</p>
+                        <p className="text-sm text-muted-foreground">{bestModel.isRegression ? `R² ${bestModel.r2.toFixed(3)}` : `${bestModel.accuracy.toFixed(1)}% accuracy`} • {bestModel.trainTime}</p>
                       </div>
                     </div>
                   </CardContent>

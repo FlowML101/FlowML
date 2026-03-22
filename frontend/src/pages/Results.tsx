@@ -43,8 +43,8 @@ export function Results() {
         const dateA = new Date(a.created_at || 0).getTime()
         const dateB = new Date(b.created_at || 0).getTime()
         if (dateB !== dateA) return dateB - dateA
-        // Then by accuracy
-        return (b.accuracy || 0) - (a.accuracy || 0)
+        // Then by accuracy or r2
+        return (b.accuracy || b.r2 || 0) - (a.accuracy || a.r2 || 0)
       })
       setModels(sorted)
       setError(null)
@@ -161,9 +161,9 @@ export function Results() {
     return models.filter(m => m.job_id === selectedJobId)
   }, [models, selectedJobId])
 
-  // Sort filtered models by rank (accuracy)
+  // Sort filtered models by rank (accuracy or r2)
   const sortedModels = useMemo(() => {
-    return [...filteredModels].sort((a, b) => (b.accuracy || 0) - (a.accuracy || 0))
+    return [...filteredModels].sort((a, b) => (b.accuracy || b.r2 || 0) - (a.accuracy || a.r2 || 0))
   }, [filteredModels])
 
   const bestModel = sortedModels[0]
@@ -288,21 +288,21 @@ export function Results() {
             <CardContent className="relative">
               <div className="grid grid-cols-4 gap-4">
                 <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
-                  <div className="text-xs text-muted-foreground">Accuracy</div>
-                  <div className="text-2xl font-bold text-green-400">
-                    {bestModel.accuracy ? `${(bestModel.accuracy * 100).toFixed(1)}%` : 'N/A'}
+                    <div className="text-xs text-muted-foreground">{bestModel.accuracy ? "Accuracy" : "R² Score"}</div>
+                    <div className="text-2xl font-bold text-green-400">
+                      {bestModel.accuracy ? `${(bestModel.accuracy * 100).toFixed(1)}%` : bestModel.r2 ? bestModel.r2.toFixed(3) : 'N/A'}
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
-                  <div className="text-xs text-muted-foreground">F1 Score</div>
+                  <div className="text-xs text-muted-foreground">{bestModel.accuracy ? "F1 Score" : "RMSE"}</div>
                   <div className="text-2xl font-bold text-blue-400">
-                    {bestModel.f1_score?.toFixed(3) || 'N/A'}
+                    {bestModel.f1_score ? bestModel.f1_score.toFixed(3) : bestModel.rmse ? bestModel.rmse.toFixed(3) : 'N/A'}
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
-                  <div className="text-xs text-muted-foreground">Precision</div>
+                  <div className="text-xs text-muted-foreground">{bestModel.accuracy ? "Precision" : "MAE"}</div>
                   <div className="text-2xl font-bold text-purple-400">
-                    {bestModel.precision?.toFixed(3) || 'N/A'}
+                    {bestModel.precision ? bestModel.precision.toFixed(3) : bestModel.mae ? bestModel.mae.toFixed(3) : 'N/A'}
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50">
@@ -326,11 +326,11 @@ export function Results() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-16">Rank</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead>Accuracy</TableHead>
-                    <TableHead>F1 Score</TableHead>
-                    <TableHead>Precision</TableHead>
+                      <TableHead>Rank</TableHead>
+                      <TableHead>Model</TableHead>
+                      <TableHead>Acc/R²</TableHead>
+                      <TableHead>F1/RMSE</TableHead>
+                      <TableHead>Prec/MAE</TableHead>
                     <TableHead>Recall</TableHead>
                     <TableHead>Training Time</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -350,11 +350,11 @@ export function Results() {
                       <TableCell className="font-medium">{model.name}</TableCell>
                       <TableCell>
                         <span className="text-green-400 font-semibold">
-                          {model.accuracy ? `${(model.accuracy * 100).toFixed(1)}%` : 'N/A'}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-foreground">{model.f1_score?.toFixed(3) || 'N/A'}</TableCell>
-                      <TableCell className="text-foreground">{model.precision?.toFixed(3) || 'N/A'}</TableCell>
+                            {model.accuracy ? `${(model.accuracy * 100).toFixed(1)}%` : model.r2 ? `R²: ${model.r2.toFixed(3)}` : 'N/A'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-foreground">{model.f1_score ? model.f1_score.toFixed(3) : model.rmse ? `RMSE: ${model.rmse.toFixed(3)}` : 'N/A'}</TableCell>
+                        <TableCell className="text-foreground">{model.precision ? model.precision.toFixed(3) : model.mae ? `MAE: ${model.mae.toFixed(3)}` : 'N/A'}</TableCell>
                       <TableCell className="text-foreground">{model.recall?.toFixed(3) || 'N/A'}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">{formatTime(model.training_time)}</TableCell>
                       <TableCell className="text-right">
@@ -438,7 +438,7 @@ export function Results() {
                                 {/* Stats */}
                                 <div className="grid grid-cols-3 gap-3">
                                   <div className="p-3 rounded-lg bg-muted/50 dark:bg-zinc-800/50 text-center">
-                                    <div className="text-xs text-muted-foreground">Accuracy</div>
+                                    <div className="text-xs text-muted-foreground">{bestModel.accuracy ? "Accuracy" : "R² Score"}</div>
                                     <div className="text-lg font-bold text-green-400">
                                       {model.accuracy ? `${(model.accuracy * 100).toFixed(1)}%` : 'N/A'}
                                     </div>

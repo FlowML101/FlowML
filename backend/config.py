@@ -59,7 +59,8 @@ class Settings(BaseSettings):
     LOGS_DIR: Path = Path("./logs")
     
     # Upload limits
-    MAX_UPLOAD_SIZE_MB: int = 500  # Max file size in MB
+    # HARD CAP AT 50MB FOR PRESENTATION DEMO (Prevent OOM crashes)
+    MAX_UPLOAD_SIZE_MB: int = 50  # Max file size in MB
     ALLOWED_EXTENSIONS: set[str] = {
         # Text/CSV
         ".csv", ".tsv", ".txt",

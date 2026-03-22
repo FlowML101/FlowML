@@ -25,8 +25,10 @@ export function InferencePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [groupsCollapsed, setGroupsCollapsed] = useState<Record<string, boolean>>({})
   const [prediction, setPrediction] = useState<{
-    survived: boolean
-    confidence: number
+    value: string | number
+    isRegression: boolean
+    isPositive: boolean
+    confidence: number | null
     model: string
     latency: number
   } | null>(null)
@@ -353,10 +355,16 @@ export function InferencePage() {
       const latency = Date.now() - startTime
       
       const currentModelData = filteredModels.find(m => m.id === selectedModel)
+      const isRegression = currentModelData?.r2 !== undefined && currentModelData?.r2 !== null
+      
+      const predValue = result.prediction
+      const isPositiveClass = predValue === 1 || predValue === '1' || String(predValue).toLowerCase() === 'true' || String(predValue).toLowerCase() === 'yes'
       
       setPrediction({
-        survived: result.prediction === 1 || result.prediction === '1' || String(result.prediction).toLowerCase() === 'true',
-        confidence: result.confidence || result.probability || 0.85,
+        value: predValue,
+        isRegression: !!isRegression,
+        isPositive: isPositiveClass,
+        confidence: isRegression ? null : (result.confidence || result.probability || 0.85),
         model: currentModelData?.name || 'Unknown',
         latency: latency,
       })
@@ -732,10 +740,10 @@ export function InferencePage() {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <Card className={`border-2 ${prediction.survived ? 'border-green-600/50 bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-green-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-green-500/12' : 'border-red-600/50 bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br before:from-red-500/10 before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md hover:shadow-red-500/12'}`}>
+                <Card className={`border-2 ${prediction.isRegression ? 'border-blue-600/50 hover:shadow-blue-500/12' : (prediction.isPositive ? 'border-green-600/50 hover:shadow-green-500/12' : 'border-red-600/50 hover:shadow-red-500/12')} bg-gradient-to-br from-zinc-900 to-zinc-900/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-br ${prediction.isRegression ? 'before:from-blue-500/10' : (prediction.isPositive ? 'before:from-green-500/10' : 'before:from-red-500/10')} before:to-transparent before:opacity-30 transition-all duration-300 hover:shadow-md`}>
                   <CardHeader className="relative">
                     <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className={`w-5 h-5 ${prediction.survived ? 'text-green-500' : 'text-red-500'}`} />
+                      <TrendingUp className={`w-5 h-5 ${prediction.isRegression ? 'text-blue-500' : (prediction.isPositive ? 'text-green-500' : 'text-red-500')}`} />
                       Prediction Result
                     </CardTitle>
                     <CardDescription>Model: {prediction.model}</CardDescription>
@@ -743,30 +751,36 @@ export function InferencePage() {
                   <CardContent className="space-y-6 relative">
                     {/* Main Prediction */}
                     <div className="text-center p-6 rounded-xl bg-muted/50 dark:bg-zinc-900/50 border border-border dark:border-zinc-700">
-                      <div className="text-sm text-muted-foreground mb-2">Survival Prediction</div>
-                      <div className={`text-4xl font-bold mb-2 ${prediction.survived ? 'text-green-400' : 'text-red-400'}`}>
-                        {prediction.survived ? 'Survived' : 'Did Not Survive'}
+                      <div className="text-sm text-muted-foreground mb-2">
+                        {prediction.isRegression ? 'Predicted Value' : 'Classification Class'}
                       </div>
-                      <div className="text-lg text-muted-foreground">
-                        {(prediction.confidence * 100).toFixed(1)}% Confidence
+                      <div className={`text-4xl font-bold mb-2 ${prediction.isRegression ? 'text-blue-400' : (prediction.isPositive ? 'text-green-400' : 'text-red-400')}`}>
+                         {prediction.isRegression ? (typeof prediction.value === 'number' ? prediction.value.toFixed(3) : prediction.value) : String(prediction.value)}
                       </div>
+                      {!prediction.isRegression && prediction.confidence !== null && (
+                        <div className="text-lg text-muted-foreground">
+                          {(prediction.confidence * 100).toFixed(1)}% Confidence
+                        </div>
+                      )}
                     </div>
 
-                    {/* Confidence Bar */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-zinc-500">Confidence Level</span>
-                        <span className="font-semibold">{(prediction.confidence * 100).toFixed(1)}%</span>
+                    {/* Confidence Bar (Only for Classification) */}
+                    {!prediction.isRegression && prediction.confidence !== null && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-zinc-500">Confidence Level</span>
+                          <span className="font-semibold">{(prediction.confidence * 100).toFixed(1)}%</span>
+                        </div>
+                        <div className="h-3 bg-zinc-800 rounded-full overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${prediction.confidence * 100}%` }}
+                            transition={{ duration: 0.8, ease: 'easeOut' }}
+                            className={`h-full ${prediction.isPositive ? 'bg-gradient-to-r from-green-600 to-green-400' : 'bg-gradient-to-r from-red-600 to-red-400'}`}
+                          />
+                        </div>
                       </div>
-                      <div className="h-3 bg-zinc-800 rounded-full overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${prediction.confidence * 100}%` }}
-                          transition={{ duration: 0.8, ease: 'easeOut' }}
-                          className={`h-full ${prediction.survived ? 'bg-gradient-to-r from-green-600 to-green-400' : 'bg-gradient-to-r from-red-600 to-red-400'}`}
-                        />
-                      </div>
-                    </div>
+                    )}
 
                     {/* Stats */}
                     <div className="grid grid-cols-2 gap-3">
@@ -784,7 +798,9 @@ export function InferencePage() {
                     <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-600/10 border border-blue-600/30">
                       <AlertCircle className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
                       <p className="text-xs text-blue-300">
-                        This prediction is based on historical Titanic passenger data and the selected ML model.
+                        {prediction.isRegression 
+                          ? "This continuous prediction is estimated using the learned regression patterns from your dataset."
+                          : "This classification represents the most likely category based on historical data patterns."}
                       </p>
                     </div>
                   </CardContent>
