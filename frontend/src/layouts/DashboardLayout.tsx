@@ -9,13 +9,10 @@ import {
   FlaskConical,
   ScrollText,
   ChevronRight,
-  Settings,
-  User,
   Search,
   BarChart3,
   Rocket
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { NotificationCenter } from '@/components/NotificationCenter'
 import { PageTransition } from '@/components/PageTransition'
@@ -179,13 +176,6 @@ export function DashboardLayout() {
             
             {/* Notification Center */}
             <NotificationCenter />
-
-            <Button title="Settings">
-              <Settings className="w-5 h-5" />
-            </Button>
-            <Button title="Profile">
-              <User className="w-5 h-5" />
-            </Button>
           </div>
         </header>
 

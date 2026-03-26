@@ -97,10 +97,6 @@ export function WorkersManager() {
           <Badge variant="outline" className="text-sm px-4 py-2">
             {onlineWorkers}/{totalWorkers} online
           </Badge>
-          <Button size="sm" className="bg-gradient-to-r from-purple-600 to-purple-600 hover:from-purple-700 hover:to-violet-700">
-            <Server className="w-4 h-4 mr-2" />
-            Add Worker
-          </Button>
         </div>
       </div>
 
