@@ -4,9 +4,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { 
-  TrendingUp, BarChart3, GitCompare, Trophy, 
-  Target, Clock, Check, Loader2, RefreshCw, Activity
+import {
+  TrendingUp, BarChart3, GitCompare, Trophy,
+  Target, Clock, Check, Loader2, RefreshCw, Activity, Trash2
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { resultsApi, trainingApi, type TrainedModel, type Job } from '@/lib/api'
@@ -46,6 +46,7 @@ export function ModelComparison() {
   const [displayModels, setDisplayModels] = useState<DisplayModel[]>([])
   const [selectedModels, setSelectedModels] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const [deletingJob, setDeletingJob] = useState(false)
   const [confusionMatrices, setConfusionMatrices] = useState<Record<string, ConfusionMatrixData>>({})
   const [featureImportances, setFeatureImportances] = useState<Record<string, FeatureImportanceItem[]>>({})
 
@@ -143,6 +144,24 @@ export function ModelComparison() {
     }
     fetchData()
   }, [])
+
+  const handleDeleteJob = async () => {
+    if (!selectedJobId || selectedJobId === 'all') return;
+      
+    if (window.confirm('Are you sure you want to delete this job and all its models? This action cannot be undone.')) {
+      setDeletingJob(true);
+      try {
+        await trainingApi.delete(selectedJobId);
+        setSelectedJobId('all');
+        await refreshData();
+      } catch (err) {
+        console.error('Failed to delete job:', err);
+        alert('Failed to delete job. Check console for details.');
+      } finally {
+        setDeletingJob(false);
+      }
+    }
+  };
 
   const refreshData = useCallback(async () => {
     setLoading(true)
@@ -278,6 +297,23 @@ export function ModelComparison() {
             </SelectContent>
           </Select>
           <Badge variant="secondary">{displayModels.length} models</Badge>
+          
+          {selectedJobId !== 'all' && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDeleteJob}
+              disabled={deletingJob}
+              className="ml-auto flex items-center gap-2 px-3 hover:bg-red-900/40 hover:text-red-400 bg-red-950/20 text-red-500 border border-red-900/50"
+            >
+              {deletingJob ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+              {deletingJob ? 'Deleting...' : 'Delete Job'}
+            </Button>
+          )}
         </div>
       </div>
 

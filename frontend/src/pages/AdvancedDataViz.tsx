@@ -4,9 +4,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { 
-  BarChart3, TrendingUp, AlertTriangle, Activity, 
-  Grid3x3, Zap, Info, Loader2, RefreshCw, Database, FlaskConical
+import {
+  BarChart3, TrendingUp, AlertTriangle, Activity,
+  Grid3x3, Zap, Info, Loader2, RefreshCw, Database, FlaskConical, Trash2
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { datasetsApi, resultsApi, trainingApi, type Dataset, type TrainedModel, type Job } from '@/lib/api'
@@ -45,6 +45,7 @@ export function AdvancedDataViz() {
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>('')
   const [selectedJobId, setSelectedJobId] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
+  const [deletingJob, setDeletingJob] = useState(false)
   
   // Column stats state
   const [columnStats, setColumnStats] = useState<ColumnStatDisplay[]>([])
@@ -218,6 +219,24 @@ export function AdvancedDataViz() {
     return 'bg-red-600'
   }
 
+  const handleDeleteJob = async () => {
+    if (!selectedJobId || selectedJobId === 'all') return;
+      
+    if (window.confirm('Are you sure you want to delete this job and all its models? This action cannot be undone.')) {
+      setDeletingJob(true);
+      try {
+        await trainingApi.delete(selectedJobId);
+        setSelectedJobId('');
+        await refreshData();
+      } catch (err) {
+        console.error('Failed to delete job:', err);
+        alert('Failed to delete job. Check console for details.');
+      } finally {
+        setDeletingJob(false);
+      }
+    }
+  };
+
   const refreshData = useCallback(async () => {
     setLoading(true)
     try {
@@ -300,9 +319,25 @@ export function AdvancedDataViz() {
                 )}
               </SelectContent>
             </Select>
+              
+              {selectedJobId && (
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  onClick={handleDeleteJob}
+                  disabled={deletingJob}
+                  className="h-9 w-9 hover:bg-red-900/40 hover:text-red-400 bg-red-950/20 text-red-500 border border-red-900/50"
+                  title="Delete Job"
+                >
+                  {deletingJob ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                </Button>
+              )}
           </div>
 
-          {/* Model Selector */}
           <div className="flex items-center gap-2">
             <FlaskConical className="w-4 h-4 text-purple-400" />
             <Select value={selectedModelId} onValueChange={setSelectedModelId} disabled={models.length === 0}>

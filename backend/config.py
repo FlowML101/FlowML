@@ -139,7 +139,7 @@ class Settings(BaseSettings):
     # CORS
     # ===================
     # Comma-separated in .env, parsed as list
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000"
     
     @property
     def cors_origins_list(self) -> list[str]:

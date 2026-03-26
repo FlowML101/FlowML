@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { TrendingDown, Terminal, Activity, Zap, AlertCircle, Loader2 } from 'lucide-react'
+import { TrendingDown, Terminal, Activity, Zap, AlertCircle, Loader2, StopCircle } from 'lucide-react'
 import { trainingApi, type Job } from '@/lib/api'
 
 interface ChartDataPoint {
@@ -17,6 +18,23 @@ export function LiveMonitor() {
   const [chartData, setChartData] = useState<ChartDataPoint[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const [isCancelling, setIsCancelling] = useState(false)
+
+  const handleCancelJob = async () => {
+    if (!activeJob) return
+    if (!confirm('Are you sure you want to cancel this training job?')) return
+    
+    try {
+      setIsCancelling(true)
+      await trainingApi.cancel(activeJob.id)
+      setLogs(prev => [...prev, `[INFO] Cancellation requested by user...`])
+    } catch (err) {
+      console.error('Failed to cancel job:', err)
+      alert('Failed to cancel job. Check console for details.')
+    } finally {
+      setIsCancelling(false)
+    }
+  }
 
   useEffect(() => {
     const fetchActiveJob = async () => {
@@ -145,6 +163,22 @@ export function LiveMonitor() {
             {isRunning && <div className="w-2 h-2 bg-white rounded-full animate-pulse mr-2"></div>}
             {activeJob.status}
           </Badge>
+          {(isRunning || activeJob.status === 'pending') && (
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={handleCancelJob}
+              disabled={isCancelling}
+              className="ml-2"
+            >
+              {isCancelling ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <StopCircle className="w-4 h-4 mr-2" />
+              )}
+              {isCancelling ? 'Cancelling...' : 'Cancel Job'}
+            </Button>
+          )}
         </div>
       </div>
 

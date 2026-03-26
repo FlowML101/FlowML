@@ -806,3 +806,50 @@ async def _poll_celery_job(job_id: str, celery_task_id: str):
     
     # Cleanup
     _celery_tasks.pop(job_id, None)
+
+@router.delete("/{job_id}", status_code=204)
+async def delete_job(
+    job_id: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """Delete a training job and all associated models/files"""
+    import shutil
+    import traceback
+    
+    try:
+        # Find job
+        result = await session.execute(select(Job).where(Job.id == job_id))
+        job = result.scalar_one_or_none()
+        if not job:
+            raise not_found("Job", job_id)
+            
+        # Delete associated trained models from DB
+        from models.trained_model import TrainedModel
+        models_result = await session.execute(select(TrainedModel).where(TrainedModel.job_id == job_id))
+        models = models_result.scalars().all()
+        for model in models:
+            await session.delete(model)
+            
+        await session.commit()
+            
+        # Delete job from DB
+        await session.delete(job)
+        await session.commit()
+        
+        # Broadcast deletion
+        await manager.broadcast({
+            "type": "job_deleted",
+            "payload": {"jobId": job_id}
+        })
+        
+        # Clean up files on disk
+        job_dir = settings.MODELS_DIR / job_id
+        if job_dir.exists() and job_dir.is_dir():
+            try:
+                shutil.rmtree(job_dir)
+            except Exception as e:
+                logger.warning(f"Failed to delete model directory {job_dir}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error in delete_job: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))

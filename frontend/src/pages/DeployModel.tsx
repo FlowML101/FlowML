@@ -4,10 +4,10 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { 
-  Rocket, Download, Code2, Copy, Check, 
+import {
+  Rocket, Download, Code2, Copy, Check,
   Terminal, Server, Loader2, AlertCircle,
-  CheckCircle, ExternalLink, FileJson
+  CheckCircle, ExternalLink, FileJson, Trash2
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { resultsApi, trainingApi, type TrainedModel, type Job } from '@/lib/api'
@@ -21,6 +21,42 @@ export function DeployModel() {
   const [isLoading, setIsLoading] = useState(true)
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [deletingJob, setDeletingJob] = useState(false)
+
+  const handleDeleteJob = async () => {
+    if (!selectedJobId || selectedJobId === 'all') return;
+      
+    if (window.confirm('Are you sure you want to delete this job and all its models? This action cannot be undone.')) {
+      setDeletingJob(true);
+      try {
+        await trainingApi.delete(selectedJobId);
+        
+        // Refresh data
+        const [modelsData, jobsData] = await Promise.all([
+          resultsApi.listAllModels(),
+          trainingApi.list()
+        ])
+        setModels(modelsData)
+        const completedJobs = jobsData.filter(j => j.status === 'completed')
+        setJobs(completedJobs)
+        
+        if (completedJobs.length > 0) {
+          const latest = completedJobs.sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )[0]
+          setSelectedJobId(latest.id)
+        } else {
+          setSelectedJobId('')
+          setSelectedModelId('')
+        }
+      } catch (err) {
+        console.error('Failed to delete job:', err);
+        toast.error('Failed to delete job');
+      } finally {
+        setDeletingJob(false);
+      }
+    }
+  };
 
   // Get API base URL from current window location
   const apiBaseUrl = `${window.location.protocol}//${window.location.hostname}:8000`
@@ -216,20 +252,40 @@ if hasattr(model, 'predict_proba'):
               {/* Job Filter */}
               <div className="space-y-2">
                 <label className="text-sm text-muted-foreground">Training Job</label>
-                <Select value={selectedJobId} onValueChange={setSelectedJobId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select job" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {jobs.map(job => (
-                      <SelectItem key={job.id} value={job.id}>
-                        {job.name || `Job ${job.id.slice(0, 8)}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <Select value={selectedJobId} onValueChange={setSelectedJobId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select job" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {jobs.map(job => (
+                            <SelectItem key={job.id} value={job.id}>
+                              {job.name || `Job ${job.id.slice(0, 8)}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {selectedJobId && (
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={handleDeleteJob}
+                        disabled={deletingJob}
+                        className="h-10 w-10 hover:bg-red-900/40 hover:text-red-400 bg-red-950/20 text-red-500 border border-red-900/50"
+                        title="Delete Job"
+                      >
+                        {deletingJob ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                    )}
+                  </div>
               </div>
-
+              
               {/* Model Selection */}
               <div className="space-y-2">
                 <label className="text-sm text-muted-foreground">Model</label>

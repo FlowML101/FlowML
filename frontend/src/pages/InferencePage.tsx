@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { FlaskConical, Play, Sparkles, TrendingUp, AlertCircle, Loader2, Activity, RefreshCw, Wand2, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { FlaskConical, Play, Sparkles, TrendingUp, AlertCircle, Loader2, Activity, RefreshCw, Wand2, X, ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { resultsApi, trainingApi, type TrainedModel, type Job } from '@/lib/api'
 
@@ -20,6 +20,7 @@ export function InferencePage() {
   const [modelsLoading, setModelsLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>('')
+  const [deletingJob, setDeletingJob] = useState(false)
   const [modelMetadata, setModelMetadata] = useState<any>(null)
   const [metadataLoading, setMetadataLoading] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -45,6 +46,24 @@ export function InferencePage() {
     if (selectedJobId === 'all') return models
     return models.filter(m => m.job_id === selectedJobId)
   }, [models, selectedJobId])
+
+  const handleDeleteJob = async () => {
+    if (!selectedJobId || selectedJobId === 'all') return;
+      
+    if (window.confirm('Are you sure you want to delete this job and all its models? This action cannot be undone.')) {
+      setDeletingJob(true);
+      try {
+        await trainingApi.delete(selectedJobId);
+        setSelectedJobId('all');
+        await fetchModels(true);
+      } catch (err) {
+        console.error('Failed to delete job:', err);
+        alert('Failed to delete job. Check console for details.');
+      } finally {
+        setDeletingJob(false);
+      }
+    }
+  };
 
   const fetchModels = async (isRefresh = false) => {
     try {
@@ -443,6 +462,23 @@ export function InferencePage() {
             ))}
           </SelectContent>
         </Select>
+        
+        {selectedJobId !== 'all' && (
+          <Button
+            variant="destructive"
+            size="icon"
+            onClick={handleDeleteJob}
+            disabled={deletingJob}
+            className="h-10 w-10 hover:bg-red-900/40 hover:text-red-400 bg-red-950/20 text-red-500 border border-red-900/50"
+            title="Delete Job"
+          >
+            {deletingJob ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
+          </Button>
+        )}
       </div>
 
       {filteredModels.length === 0 ? (

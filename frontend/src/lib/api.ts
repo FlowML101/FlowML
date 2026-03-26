@@ -14,6 +14,9 @@ async function handleResponse<T>(response: Response): Promise<T> {
     const error: ApiError = await response.json().catch(() => ({ detail: 'Unknown error' }))
     throw new Error(error.detail || `HTTP ${response.status}`)
   }
+  if (response.status === 204) {
+    return {} as T;
+  }
   return response.json()
 }
 
@@ -178,7 +181,12 @@ export const trainingApi = {
     const response = await fetch(url)
     return handleResponse<Job[]>(response)
   },
-
+  delete: async (jobId: string): Promise<void> => {
+    const response = await fetch(`${API_BASE}/training/${jobId}`, {
+      method: 'DELETE'
+    })
+    return handleResponse<void>(response)
+  },
   get: async (id: string): Promise<Job> => {
     const response = await fetch(`${API_BASE}/training/${id}`)
     return handleResponse<Job>(response)

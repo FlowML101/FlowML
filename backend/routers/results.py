@@ -154,11 +154,19 @@ async def get_model_metadata(
     # Try to load metadata.json file
     model_path = Path(model.model_path)
     metadata_path = model_path.parent / f"{model_path.stem}_metadata.json"
-    
+
     if metadata_path.exists():
         import json
         with open(metadata_path, "r") as f:
             metadata = json.load(f)
+            
+        # VERY CRITICAL: If original feature names exist before one-hot encoding,
+        # we MUST tell the frontend to use those. Otherwise the frontend generates sliders
+        # for derived dummy columns (e.g. 'City_NewYork' instead of 'City'), which completely
+        # bypasses the backend preprocessor and results in everything getting imputed with defaults!
+        if "feature_names_original" in metadata and metadata["feature_names_original"]:
+            metadata["feature_names"] = metadata["feature_names_original"]
+            
         return metadata
     else:
         # Fallback: extract basic info from model file
@@ -217,11 +225,27 @@ async def predict(
         
         import pandas as pd
         
+# Get features dict properly 
+        # (FastAPI might nest it as {'features': {...}} depending on how frontend sends it)
+        feature_dict = request.features
+        if isinstance(feature_dict, dict) and 'features' in feature_dict and len(feature_dict) == 1:
+            feature_dict = feature_dict['features']
+
         # Create DataFrame from input features
         if preprocessor:
             # Use original feature names (before one-hot encoding)
-            input_df = pd.DataFrame([request.features])
+            import numpy as np
             
+            # Ensure none values are heavily dealt with
+            clean_dict = {}
+            for k, v in feature_dict.items():
+                if v is None or v == "":
+                    clean_dict[k] = np.nan  # Let the preprocessor SimpleImputer handle missing values
+                else:
+                    clean_dict[k] = v
+                
+            input_df = pd.DataFrame([clean_dict])
+
             # Apply the same preprocessing as during training
             loop = asyncio.get_event_loop()
             input_processed = await loop.run_in_executor(
@@ -229,10 +253,23 @@ async def predict(
             )
         else:
             # Legacy: no preprocessor available, use features as-is
+            clean_dict = {}
             if feature_names:
-                input_processed = pd.DataFrame([{k: request.features.get(k) for k in feature_names}])
+                for k in feature_names:
+                    val = feature_dict.get(k)
+                    # Convert nulls to 0 or appropriate dtype to prevent lightgbm object errors
+                    clean_dict[k] = val if val is not None and val != "" else 0
+                input_processed = pd.DataFrame([clean_dict])
+                
+                # Convert all columns to numeric where possible to avoid object dtype panics in tree models
+                for col in input_processed.columns:
+                    input_processed[col] = pd.to_numeric(input_processed[col], errors='ignore')
             else:
-                input_processed = pd.DataFrame([request.features])
+                for k, v in feature_dict.items():
+                    clean_dict[k] = v if v is not None and v != "" else 0
+                input_processed = pd.DataFrame([clean_dict])
+                for col in input_processed.columns:
+                    input_processed[col] = pd.to_numeric(input_processed[col], errors='ignore')
         
         # Run prediction in thread pool to not block event loop
         loop = asyncio.get_event_loop()
@@ -265,9 +302,8 @@ async def predict(
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
-
-
+          import traceback
+          print("PREDICTION ERROR:", traceback.format_exc())
 @router.post("/models/{model_id}/predict", response_model=PredictionResponse)
 async def predict_by_model_id(
     model_id: str,

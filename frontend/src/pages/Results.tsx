@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Trophy, Download, Radio, Copy, FlaskConical, Loader2, AlertCircle, RefreshCw, Filter } from 'lucide-react'
+import { ShieldAlert, Trophy, Download, Radio, Copy, FlaskConical, Loader2, AlertCircle, RefreshCw, Filter, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { resultsApi, trainingApi, TrainedModel, Job } from '@/lib/api'
 
@@ -175,6 +175,49 @@ export function Results() {
     return `${mins}m ${secs}s`
   }
 
+  const [deletingJob, setDeletingJob] = useState(false)
+
+  const handleDeleteJob = async (idToDelete: string) => {
+    if (!idToDelete || idToDelete === 'latest' || idToDelete === 'all') return;
+    
+    if (!window.confirm("Are you sure you want to delete this training job and all its models? This cannot be undone.")) return;
+
+    setDeletingJob(true)
+    try {
+      await trainingApi.delete(idToDelete)
+      toast.success("Job deleted successfully")
+      if (selectedJobId === idToDelete) {
+        setSelectedJobId('latest')
+      }
+      await fetchModels(true)
+    } catch (err) {
+      console.error('Failed to delete job:', err)
+      toast.error(err instanceof Error ? err.message : "Failed to delete the selected job.")
+    } finally {
+      setDeletingJob(false)
+    }
+  }
+
+  const handleDeleteAllJobs = async () => {
+    if (!window.confirm("WARNING: Are you sure you want to delete ALL training jobs and models? This will wipe your history completely.")) return;
+    
+    setDeletingJob(true)
+    try {
+      // Loop through all jobs and delete them sequentially to avoid overwhelming the server
+      for (const job of jobs) {
+        await trainingApi.delete(job.id)
+      }
+      toast.success("All jobs wiped successfully")
+      setSelectedJobId('latest')
+      await fetchModels(true)
+    } catch (err) {
+      console.error('Failed to clear jobs:', err)
+      toast.error("Failed to delete all jobs. Some may remain.")
+    } finally {
+      setDeletingJob(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -230,8 +273,20 @@ export function Results() {
               ))}
             </SelectContent>
           </Select>
-          <Button 
-            variant="outline" 
+          {selectedJobId !== 'all' && selectedJobId !== 'latest' && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => handleDeleteJob(selectedJobId)}
+              disabled={deletingJob}
+              title="Delete this job and all associated models"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete Job
+            </Button>
+          )}
+          <Button
+            variant="outline"
             size="sm"
             onClick={() => fetchModels(true)}
             disabled={refreshing}
